@@ -82,4 +82,3 @@ backend/.env.local
 .cache/
 tmp/
 temp/
-.github/workflows/

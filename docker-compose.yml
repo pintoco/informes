@@ -1,0 +1,117 @@
+version: '3.8'
+
+# ============================================================
+# Elemental Pro — Stack completo de desarrollo (hot reload)
+# Uso: docker compose up --build
+# ============================================================
+
+services:
+
+  # ── Base de datos ──────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: elemental_db
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: elemental_pro
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d elemental_pro"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - elemental_net
+
+  # ── Migraciones (se ejecuta y termina) ────────────────────
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: elemental_migrate
+    command: npx prisma migrate deploy
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/elemental_pro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - elemental_net
+
+  # ── Backend NestJS (hot reload) ────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: elemental_backend
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/elemental_pro
+      # AWS — usa credenciales locales o LocalStack
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-localstack}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-localstack}
+      S3_BUCKET_PHOTOS: ${S3_BUCKET_PHOTOS:-elemental-pro-photos-dev}
+      S3_BUCKET_PDFS: ${S3_BUCKET_PDFS:-elemental-pro-pdfs-dev}
+      SQS_PDF_QUEUE_URL: ${SQS_PDF_QUEUE_URL:-http://localstack:4566/000000000000/pdf-jobs}
+      # Cognito
+      COGNITO_REGION: ${COGNITO_REGION:-us-east-1}
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:-us-east-1_XXXXXXXXX}
+      # CORS — origen del frontend en Docker
+      CORS_ORIGIN: http://localhost:5173
+    volumes:
+      # Hot reload: monta el código fuente
+      - ./backend/src:/app/src
+      - ./backend/prisma:/app/prisma
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - elemental_net
+
+  # ── Frontend React + Vite (hot reload) ────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: elemental_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      # El proxy de Vite apunta al servicio "backend" de Docker
+      BACKEND_URL: http://backend:3001
+      # Variables de entorno de la app
+      VITE_API_URL: /api
+      VITE_COGNITO_REGION: ${COGNITO_REGION:-us-east-1}
+      VITE_COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:-us-east-1_XXXXXXXXX}
+      VITE_COGNITO_CLIENT_ID: ${COGNITO_CLIENT_ID:-xxxxxxxxxxxxxxxxxxxxxxxxxx}
+      VITE_COGNITO_DOMAIN: ${COGNITO_DOMAIN:-elemental-pro.auth.us-east-1.amazoncognito.com}
+      VITE_COGNITO_REDIRECT_URI: http://localhost:5173
+    volumes:
+      # Hot reload: monta el código fuente (excluye node_modules)
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/tailwind.config.ts:/app/tailwind.config.ts
+      - ./frontend/postcss.config.js:/app/postcss.config.js
+    depends_on:
+      - backend
+    networks:
+      - elemental_net
+
+volumes:
+  postgres_data:
+
+networks:
+  elemental_net:
+    driver: bridge

@@ -1,0 +1,15 @@
+# ── Frontend — desarrollo con hot reload ───────────────────
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+# El código fuente se monta como volumen
+# COPY . .
+
+EXPOSE 5173
+
+# --host 0.0.0.0 para que sea accesible fuera del contenedor
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

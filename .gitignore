@@ -1,0 +1,84 @@
+# ── Dependencias ─────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── Build ─────────────────────────────────────────────────────
+dist/
+build/
+.next/
+out/
+cdk.out/
+
+# ── Variables de entorno (NUNCA subir a Git) ─────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.prod
+# Sí subir los ejemplos:
+# !.env.example
+# !.env.local.example
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# ── Prisma generated (se regenera con prisma generate) ────────
+backend/node_modules/.prisma/
+
+# ── OS ────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── IDE / Editores ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Claude Code ───────────────────────────────────────────────
+.claude/
+
+# ── Tests / Coverage ─────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+
+# ── TypeScript ────────────────────────────────────────────────
+*.js.map
+*.tsbuildinfo
+
+# ── Docker volumes (si se montan localmente) ──────────────────
+postgres_data/
+minio_data/
+redis_data/
+
+# ── AWS CDK ───────────────────────────────────────────────────
+cdk.out/
+*.cdk.staging/
+
+# ── SSL / Certificados (NUNCA subir) ─────────────────────────
+nginx-ssl/certbot/
+nginx-ssl/cloudflare.ini
+*.pem
+*.key
+*.crt
+
+# ── Archivos de env con valores reales ───────────────────────
+.env.prod
+backend/.env.local
+
+# ── Misc ──────────────────────────────────────────────────────
+.cache/
+tmp/
+temp/

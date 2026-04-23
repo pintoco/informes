@@ -1,0 +1,10 @@
+[build]
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Ejecuta migraciones antes de arrancar el servidor
+startCommand = "sh -c 'npx prisma migrate deploy && node dist/main'"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

@@ -1,0 +1,35 @@
+# ── Backend — desarrollo con hot reload ────────────────────
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Dependencias del sistema para Puppeteer/Chromium (PDF worker)
+RUN apk add --no-cache \
+    chromium \
+    nss \
+    freetype \
+    harfbuzz \
+    ca-certificates \
+    ttf-freefont \
+    openssl
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+
+# Instalar dependencias primero (capa cacheada)
+COPY package*.json ./
+RUN npm ci
+
+# Archivos de configuración necesarios en runtime
+COPY tsconfig.json tsconfig.build.json nest-cli.json ./
+
+# Generar cliente Prisma
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# El código fuente se monta como volumen en dev (no se copia aquí)
+# COPY . .
+
+EXPOSE 3001
+
+CMD ["npm", "run", "start:dev"]

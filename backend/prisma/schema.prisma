@@ -1,0 +1,126 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String     @id @default(uuid())
+  cognitoSub   String?    @unique
+  email        String     @unique
+  name         String
+  phone        String?
+  passwordHash String?
+  role         Role       @default(TECHNICIAN)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  services     Service[]
+}
+
+enum Role {
+  ADMIN
+  TECHNICIAN
+}
+
+model Company {
+  id        String     @id @default(uuid())
+  name      String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  locations Location[]
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  name      String
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Service {
+  id                String          @id @default(uuid())
+  razonSocial       String
+  ubicacion         String
+  contactoTerreno   String
+  ordenTrabajo      String
+  fecha             DateTime
+  horaInicio        String
+  responsable       String
+  nombreTecnico     String
+  fono              String
+  email             String
+  tipoMantenimiento MaintenanceType
+  comentarioNvr     String?
+  comentarioCamaras String?
+  observaciones     String?
+  firmaUrl              String?
+  firmaNombreReceptor   String?
+  deletedAt             DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  createdBy         String?
+  user              User?           @relation(fields: [createdBy], references: [id])
+  photos            ServicePhoto[]
+  pdfs              ServicePdf[]
+
+  @@index([ubicacion])
+  @@index([fecha])
+  @@index([deletedAt])
+}
+
+enum MaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+  INSTALLATION
+  OTHER
+}
+
+model ServicePhoto {
+  id           String        @id @default(uuid())
+  serviceId    String
+  service      Service       @relation(fields: [serviceId], references: [id])
+  categoria    PhotoCategory
+  s3Key        String
+  url          String
+  originalName String
+  sizeBytes    Int
+  orden        Int           @default(0)
+  createdAt    DateTime      @default(now())
+
+  @@index([serviceId])
+}
+
+enum PhotoCategory {
+  BEFORE
+  AFTER
+}
+
+model ServicePdf {
+  id           String    @id @default(uuid())
+  serviceId    String
+  service      Service   @relation(fields: [serviceId], references: [id])
+  version      Int
+  status       PdfStatus @default(PENDING)
+  s3Key        String?
+  url          String?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([serviceId])
+}
+
+enum PdfStatus {
+  PENDING
+  PROCESSING
+  READY
+  ERROR
+}

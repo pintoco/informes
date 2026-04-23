@@ -1,0 +1,20 @@
+{
+  "name": "elemental-pro-infrastructure",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "tsc",
+    "deploy": "cdk deploy --all --require-approval never",
+    "destroy": "cdk destroy --all",
+    "synth": "cdk synth",
+    "diff": "cdk diff"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.130.0",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.11.20",
+    "aws-cdk": "^2.130.0"
+  }
+}

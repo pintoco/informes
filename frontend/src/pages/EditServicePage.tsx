@@ -97,6 +97,7 @@ export function EditServicePage() {
           initialData={currentService || undefined}
           onSubmit={handleSubmit}
           loading={saving}
+          isEdit
         />
 
         {/* Photos */}

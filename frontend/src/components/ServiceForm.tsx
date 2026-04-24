@@ -18,6 +18,7 @@ interface ServiceFormProps {
   initialData?: Partial<Service>;
   onSubmit: (dto: CreateServiceDto) => Promise<void>;
   loading?: boolean;
+  isEdit?: boolean;
 }
 
 const maintenanceTypeLabels: Record<MaintenanceType, string> = {
@@ -31,7 +32,6 @@ const defaultValues: CreateServiceDto = {
   razonSocial: '',
   ubicacion: '',
   contactoTerreno: '',
-  ordenTrabajo: '',
   fecha: new Date().toISOString().split('T')[0],
   horaInicio: '',
   responsable: '',
@@ -44,7 +44,7 @@ const defaultValues: CreateServiceDto = {
   observaciones: '',
 };
 
-export function ServiceForm({ initialData, onSubmit, loading }: ServiceFormProps) {
+export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: ServiceFormProps) {
   const { user } = useAuthStore();
   const [formData, setFormData] = useState<CreateServiceDto>(defaultValues);
   const [errors, setErrors] = useState<Partial<Record<keyof CreateServiceDto, string>>>({});
@@ -111,7 +111,6 @@ export function ServiceForm({ initialData, onSubmit, loading }: ServiceFormProps
     if (!formData.razonSocial.trim()) newErrors.razonSocial = 'Campo requerido';
     if (!formData.ubicacion.trim()) newErrors.ubicacion = 'Campo requerido';
     if (!formData.contactoTerreno.trim()) newErrors.contactoTerreno = 'Campo requerido';
-    if (!formData.ordenTrabajo.trim()) newErrors.ordenTrabajo = 'Campo requerido';
     if (!formData.fecha) newErrors.fecha = 'Campo requerido';
     if (!formData.horaInicio.trim()) newErrors.horaInicio = 'Campo requerido';
     if (!formData.responsable.trim()) newErrors.responsable = 'Campo requerido';
@@ -229,20 +228,14 @@ export function ServiceForm({ initialData, onSubmit, loading }: ServiceFormProps
             )}
           </div>
 
-          <div className="space-y-1">
-            <Label htmlFor="ordenTrabajo">
-              Orden de Trabajo{required}
-            </Label>
-            <Input
-              id="ordenTrabajo"
-              value={formData.ordenTrabajo}
-              onChange={(e) => updateField('ordenTrabajo', e.target.value)}
-              placeholder="OT-001"
-            />
-            {errors.ordenTrabajo && (
-              <p className="text-sm text-red-500">{errors.ordenTrabajo}</p>
-            )}
-          </div>
+          {isEdit && (
+            <div className="space-y-1">
+              <Label>Orden de Trabajo</Label>
+              <p className="text-sm font-medium text-gray-900 border border-gray-200 rounded-md px-3 py-2 bg-gray-50">
+                {formData.ordenTrabajo || '—'}
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

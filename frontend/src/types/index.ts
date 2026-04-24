@@ -94,7 +94,7 @@ export interface CreateServiceDto {
   razonSocial: string;
   ubicacion: string;
   contactoTerreno: string;
-  ordenTrabajo: string;
+  ordenTrabajo?: string;
   fecha: string;
   horaInicio: string;
   responsable: string;

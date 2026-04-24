@@ -69,13 +69,25 @@ export class ServicesService {
     return `https://${bucket}.s3.amazonaws.com/${key}`;
   }
 
+  private async generateOrdenTrabajo(): Promise<string> {
+    const year = new Date().getFullYear();
+    const result = await this.prisma.$queryRaw<{ max_num: number | null }[]>`
+      SELECT MAX(CAST(SPLIT_PART("ordenTrabajo", '-', 2) AS INTEGER)) AS max_num
+      FROM "Service"
+      WHERE "ordenTrabajo" LIKE ${`${year}-%`}
+    `;
+    const nextNum = (result[0]?.max_num ?? 0) + 1;
+    return `${year}-${nextNum.toString().padStart(3, '0')}`;
+  }
+
   async create(dto: CreateServiceDto, userId?: string) {
+    const ordenTrabajo = await this.generateOrdenTrabajo();
     return this.prisma.service.create({
       data: {
         razonSocial: dto.razonSocial,
         ubicacion: dto.ubicacion,
         contactoTerreno: dto.contactoTerreno,
-        ordenTrabajo: dto.ordenTrabajo,
+        ordenTrabajo,
         fecha: new Date(dto.fecha),
         horaInicio: dto.horaInicio,
         responsable: dto.responsable,

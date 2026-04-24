@@ -59,10 +59,9 @@ export function generateReportHtml(
             <div class="photo-item">
               ${
                 photo.dataUrl
-                  ? `<img src="${photo.dataUrl}" alt="${photo.originalName}" />`
+                  ? `<img src="${photo.dataUrl}" alt="" />`
                   : `<div class="photo-placeholder">Imagen no disponible</div>`
               }
-              <p class="photo-name">${photo.originalName}</p>
             </div>
           `
             )
@@ -271,13 +270,6 @@ export function generateReportHtml(
       justify-content: center;
       color: #94a3b8;
       font-size: 9pt;
-    }
-
-    .photo-name {
-      font-size: 8pt;
-      color: #64748b;
-      margin-top: 4px;
-      word-break: break-all;
     }
 
     /* Signature */

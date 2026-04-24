@@ -33,9 +33,9 @@ export class CreateServiceDto {
   contactoTerreno: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(100)
-  ordenTrabajo: string;
+  ordenTrabajo?: string;
 
   @IsDateString()
   @IsNotEmpty()

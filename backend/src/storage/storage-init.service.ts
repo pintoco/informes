@@ -26,17 +26,16 @@ export class StorageInitService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    const buckets = [
-      process.env.S3_BUCKET_PHOTOS || 'elemental-photos',
-      process.env.S3_BUCKET_PDFS || 'elemental-pdfs',
-    ];
+    const photosBucket = process.env.S3_BUCKET_PHOTOS || 'elemental-photos';
+    const pdfsBucket = process.env.S3_BUCKET_PDFS || 'elemental-pdfs';
 
-    for (const bucket of buckets) {
+    for (const bucket of [photosBucket, pdfsBucket]) {
       await this.ensureBucket(bucket);
     }
 
-    // Make PDFs bucket publicly readable
-    await this.setPublicReadPolicy(process.env.S3_BUCKET_PDFS || 'elemental-pdfs');
+    // Both buckets need public read so the browser can load images and PDFs directly
+    await this.setPublicReadPolicy(photosBucket);
+    await this.setPublicReadPolicy(pdfsBucket);
   }
 
   private async ensureBucket(bucket: string) {

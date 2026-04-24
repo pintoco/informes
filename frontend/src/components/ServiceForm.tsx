@@ -75,11 +75,9 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
         firmaUrl: initialData.firmaUrl || undefined,
       });
     } else if (user) {
-      // Auto-fill technician data from logged-in user
       setFormData(prev => ({
         ...prev,
         responsable: user.name || '',
-        nombreTecnico: user.name || '',
         fono: user.phone || '',
         email: user.email || '',
       }));

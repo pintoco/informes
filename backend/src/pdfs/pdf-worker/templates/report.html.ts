@@ -47,6 +47,16 @@ export function generateReportHtml(
     locale: es,
   });
 
+  const generatedAt = new Intl.DateTimeFormat('es-CL', {
+    timeZone: 'America/Santiago',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date());
+
   const renderPhotos = (photoList: PhotoData[], title: string) => {
     if (photoList.length === 0) return '';
     return `
@@ -467,9 +477,9 @@ export function generateReportHtml(
           </p>
           <div class="signature-info">
             <div class="signature-line">
-              <strong>${service.nombreTecnico}</strong>
+              <strong>${service.responsable}</strong>
             </div>
-            <div class="signature-label">Técnico Responsable</div>
+            <div class="signature-label">Responsable</div>
             <div class="signature-label" style="margin-top: 4px;">
               ${service.fono} | ${service.email}
             </div>
@@ -505,7 +515,7 @@ export function generateReportHtml(
   <!-- Footer -->
   <div class="footer">
     <div>Elemental Pro - Sistema de Gestión de Servicios Técnicos</div>
-    <div>Generado el ${format(new Date(), "dd/MM/yyyy 'a las' HH:mm", { locale: es })}</div>
+    <div>Generado el ${generatedAt}</div>
     <div>OT: ${service.ordenTrabajo}</div>
   </div>
 

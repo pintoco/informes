@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Download, FileText, RefreshCw, AlertCircle } from 'lucide-react';
+import { Eye, FileText, RefreshCw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { requestPdf, getPdfStatus, downloadPdf } from '@/api/pdfs';
@@ -129,8 +129,8 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
             <div className="flex items-center gap-2">
               {latestPdf.status === 'READY' && (
                 <Button size="sm" onClick={handleDownload}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Descargar
+                  <Eye className="h-4 w-4 mr-1" />
+                  Ver PDF
                 </Button>
               )}
               <Button
@@ -170,7 +170,7 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
                           onClick={() => downloadPdf(pdf.url!)}
                           className="text-blue-600 hover:underline"
                         >
-                          Descargar
+                          Ver PDF
                         </button>
                       )}
                     </div>

@@ -98,7 +98,7 @@ export class PdfWorkerProcessor extends WorkerHost {
           Key: pdfKey,
           Body: pdfBuffer,
           ContentType: 'application/pdf',
-          ContentDisposition: `attachment; filename="informe-${service.ordenTrabajo}.pdf"`,
+          ContentDisposition: `inline; filename="informe-${service.ordenTrabajo}.pdf"`,
         }),
       );
 

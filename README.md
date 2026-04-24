@@ -1,162 +1,140 @@
 # Elemental Pro
 
-A production-ready web application for logging technical services with photo uploads and PDF generation.
+Aplicación web para registrar servicios técnicos de CCTV: órdenes de trabajo, carga de fotos antes/después, firma digital y generación de PDFs.
 
-## Architecture
+## Stack
 
-- **Frontend**: React + Vite + TypeScript + shadcn/ui (Tailwind CSS)
-- **Backend**: NestJS + TypeScript + Prisma ORM
-- **Database**: PostgreSQL (AWS RDS)
-- **Auth**: Amazon Cognito with Google IdP
-- **Storage**: AWS S3 (photos + PDFs)
-- **Queue**: AWS SQS (PDF generation jobs)
-- **Infrastructure**: AWS CDK (Lambda + API Gateway + RDS + S3 + SQS + CloudFront)
-- **CI/CD**: GitHub Actions
+| Capa | Tecnología |
+|---|---|
+| Frontend | React + Vite + TypeScript + shadcn/ui (Tailwind CSS) |
+| Backend | NestJS + TypeScript + Prisma ORM |
+| Base de datos | PostgreSQL |
+| Cola | Redis + BullMQ |
+| Storage | MinIO (compatible S3) |
+| Auth | JWT local (email + password) |
+| Deploy | Railway |
 
-## Prerequisites
+## Desarrollo local
+
+### Requisitos
 
 - Node.js 20+
 - Docker & Docker Compose
-- AWS CLI configured
-- AWS CDK v2
 
-## Local Setup
-
-### 1. Clone and install dependencies
+### 1. Variables de entorno
 
 ```bash
-git clone <repo-url>
-cd elemental-pro
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 ```
 
-### 2. Backend setup
+Edita `backend/.env` con los valores locales (la base de datos local ya viene configurada en docker-compose).
+
+### 2. Levantar servicios de infraestructura
+
+```bash
+docker-compose -f docker-compose.local.yml up -d
+```
+
+Esto levanta PostgreSQL, Redis y MinIO.
+
+### 3. Backend
 
 ```bash
 cd backend
-cp .env.example .env
-# Edit .env with your values
 npm install
-```
-
-### 3. Start local database
-
-```bash
-cd backend
-docker-compose up db -d
-npx prisma migrate dev --name init
 npx prisma generate
-```
-
-### 4. Run backend
-
-```bash
-cd backend
+npx prisma db push
 npm run start:dev
 ```
 
-### 5. Frontend setup
+API disponible en `http://localhost:3001/api`.
+
+### 4. Frontend
 
 ```bash
 cd frontend
-cp .env.example .env
-# Edit .env with your values
 npm install
 npm run dev
 ```
 
-The frontend will be available at http://localhost:5173 and backend at http://localhost:3001/api.
+Frontend disponible en `http://localhost:5173`.
 
-## Running with Docker Compose
-
-```bash
-cd backend
-docker-compose up --build
-```
-
-## Deployment
-
-### 1. Configure GitHub Secrets
-
-Set the following secrets in your GitHub repository:
-
-| Secret | Description |
-|--------|-------------|
-| `AWS_DEPLOY_ROLE_ARN` | IAM Role ARN for GitHub OIDC |
-| `VITE_API_URL` | API Gateway URL |
-| `VITE_COGNITO_USER_POOL_ID` | Cognito User Pool ID |
-| `VITE_COGNITO_CLIENT_ID` | Cognito App Client ID |
-| `VITE_COGNITO_DOMAIN` | Cognito domain |
-| `VITE_COGNITO_REDIRECT_URI` | CloudFront URL |
-| `FRONTEND_BUCKET` | S3 bucket name for frontend |
-| `CF_DISTRIBUTION_ID` | CloudFront distribution ID |
-
-### 2. Deploy infrastructure
+### 5. Crear usuario admin inicial
 
 ```bash
-cd infrastructure
-npm install
-npm run deploy
+curl -X POST http://localhost:3001/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@empresa.com","name":"Admin","password":"Password123!","role":"ADMIN"}'
 ```
 
-### 3. Manual deploy script
+## Deploy en Railway
+
+Ver [RAILWAY.md](RAILWAY.md) para el paso a paso completo.
+
+### URLs de producción
+
+| Servicio | URL |
+|---|---|
+| Frontend | `https://informes.elementalpro.cl` |
+| Backend API | `https://backend-production-c31d.up.railway.app/api` |
+
+### Subir cambios
 
 ```bash
-chmod +x scripts/deploy.sh
-./scripts/deploy.sh
+# Backend
+railway service link backend
+railway up backend --path-as-root
+
+# Frontend
+railway service link frontend
+railway up frontend --path-as-root
 ```
 
-## AWS Costs (estimated)
+## API
 
-| Service | Monthly Cost |
-|---------|-------------|
-| RDS t3.micro (PostgreSQL) | ~$15 |
-| Lambda (2M requests) | ~$0.40 |
-| API Gateway | ~$3.50 |
-| S3 (10GB) | ~$0.23 |
-| CloudFront | ~$1 |
-| SQS | ~$0.40 |
-| Cognito (10K MAU) | Free tier |
-| **Total** | **~$20/month** |
-
-## Features Checklist
-
-- [x] User authentication via Amazon Cognito + Google SSO
-- [x] Role-based access control (ADMIN / TECHNICIAN)
-- [x] Service CRUD with soft delete
-- [x] Advanced filtering (location, date range, search)
-- [x] Photo upload (BEFORE / AFTER, max 20 photos)
-- [x] Client-side image compression
-- [x] Digital signature capture
-- [x] Async PDF generation via SQS
-- [x] PDF status polling
-- [x] Paginated service list
-- [x] S3 presigned URLs for direct uploads
-- [x] Serverless backend (Lambda + API Gateway)
-- [x] Infrastructure as Code (AWS CDK)
-- [x] CI/CD pipeline (GitHub Actions)
-
-## API Endpoints
-
-| Method | Path | Description |
+| Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | /api/services | List services (paginated, filterable) |
-| POST | /api/services | Create service |
-| GET | /api/services/:id | Get service details |
-| PUT | /api/services/:id | Update service |
-| DELETE | /api/services/:id | Soft delete service |
-| POST | /api/services/:id/photos/presign | Get presigned URL |
-| POST | /api/services/:id/photos/confirm | Confirm photo upload |
-| DELETE | /api/services/:id/photos/:photoId | Delete photo |
-| POST | /api/services/:id/pdfs | Request PDF generation |
-| GET | /api/services/:id/pdfs/:pdfId | Get PDF status |
+| POST | `/api/auth/register` | Crear usuario |
+| POST | `/api/auth/login` | Login → JWT |
+| GET | `/api/auth/me` | Usuario actual |
+| GET | `/api/services` | Listar servicios (paginado, filtrable) |
+| POST | `/api/services` | Crear servicio |
+| GET | `/api/services/:id` | Detalle de servicio |
+| PUT | `/api/services/:id` | Actualizar servicio |
+| DELETE | `/api/services/:id` | Eliminar (soft delete) |
+| POST | `/api/services/:id/photos/presign` | Obtener URL firmada para subir foto |
+| POST | `/api/services/:id/photos/confirm` | Confirmar foto subida |
+| DELETE | `/api/services/:id/photos/:photoId` | Eliminar foto |
+| POST | `/api/services/:id/pdfs` | Generar PDF |
+| GET | `/api/services/:id/pdfs/:pdfId` | Estado del PDF |
+| GET | `/api/companies` | Listar empresas |
+| POST | `/api/companies` | Crear empresa |
+| GET | `/api/health` | Health check |
 
-## Project Structure
+## Estructura
 
 ```
-elemental-pro/
-├── frontend/          # React + Vite frontend
-├── backend/           # NestJS backend
-├── infrastructure/    # AWS CDK infrastructure
-├── scripts/           # Deployment scripts
-└── .github/workflows/ # CI/CD pipelines
+.
+├── backend/               # NestJS API
+│   ├── src/
+│   ├── prisma/
+│   ├── Dockerfile
+│   └── railway.toml
+├── frontend/              # React + Vite
+│   ├── src/
+│   └── Dockerfile
+├── docker-compose.local.yml
+├── RAILWAY.md             # Guía de deploy en Railway
+└── CLAUDE.md              # Contexto para Claude Code
 ```
+
+## Funcionalidades
+
+- Autenticación con roles: `ADMIN` y `TECHNICIAN`
+- Registro de órdenes de trabajo con datos del cliente y técnico
+- Carga de fotos ANTES / DESPUÉS con compresión en cliente
+- Firma digital del receptor
+- Generación asíncrona de PDFs con Puppeteer
+- Filtros por empresa, ubicación, fecha y texto
+- Paginación en listado de servicios

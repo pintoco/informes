@@ -132,9 +132,9 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
 
     const dto: CreateServiceDto = {
       ...formData,
-      comentarioNvr: formData.comentarioNvr || undefined,
-      comentarioCamaras: formData.comentarioCamaras || undefined,
-      observaciones: formData.observaciones || undefined,
+      comentarioNvr: isEdit ? formData.comentarioNvr : (formData.comentarioNvr || undefined),
+      comentarioCamaras: isEdit ? formData.comentarioCamaras : (formData.comentarioCamaras || undefined),
+      observaciones: isEdit ? formData.observaciones : (formData.observaciones || undefined),
     };
 
     await onSubmit(dto);

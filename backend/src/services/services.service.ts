@@ -173,9 +173,9 @@ export class ServicesService {
     if (dto.fono !== undefined) updateData.fono = dto.fono;
     if (dto.email !== undefined) updateData.email = dto.email;
     if (dto.tipoMantenimiento !== undefined) updateData.tipoMantenimiento = dto.tipoMantenimiento;
-    if (dto.comentarioNvr !== undefined) updateData.comentarioNvr = dto.comentarioNvr;
-    if (dto.comentarioCamaras !== undefined) updateData.comentarioCamaras = dto.comentarioCamaras;
-    if (dto.observaciones !== undefined) updateData.observaciones = dto.observaciones;
+    if (dto.comentarioNvr !== undefined) updateData.comentarioNvr = dto.comentarioNvr || null;
+    if (dto.comentarioCamaras !== undefined) updateData.comentarioCamaras = dto.comentarioCamaras || null;
+    if (dto.observaciones !== undefined) updateData.observaciones = dto.observaciones || null;
     if (dto.firmaUrl !== undefined) updateData.firmaUrl = dto.firmaUrl;
     if (dto.firmaNombreReceptor !== undefined) updateData.firmaNombreReceptor = dto.firmaNombreReceptor;
 

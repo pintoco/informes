@@ -25,7 +25,7 @@ interface ServiceData {
   email: string;
   tipoMantenimiento: string;
   comentarioNvr?: string | null;
-  comentarioSwitch?: string | null;
+  comentarioCamaras?: string | null;
   observaciones?: string | null;
   firmaUrl?: string | null;
   firmaNombreReceptor?: string | null;
@@ -432,7 +432,7 @@ export function generateReportHtml(
 
     <!-- Technical Comments -->
     ${
-      service.comentarioNvr || service.comentarioSwitch || service.observaciones
+      service.comentarioNvr || service.comentarioCamaras || service.observaciones
         ? `
     <div class="section">
       <div class="section-title">Comentarios Técnicos</div>
@@ -446,11 +446,11 @@ export function generateReportHtml(
           : ''
       }
       ${
-        service.comentarioSwitch
+        service.comentarioCamaras
           ? `
       <div class="comment-box">
-        <div class="comment-label">Switch</div>
-        ${service.comentarioSwitch}
+        <div class="comment-label">Cámaras</div>
+        ${service.comentarioCamaras}
       </div>`
           : ''
       }

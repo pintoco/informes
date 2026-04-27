@@ -202,21 +202,33 @@ El **Plan Hobby** de Railway cuesta $5/mes e incluye $5 de créditos. Para este 
 
 ---
 
+## Auto-deploy desde GitHub
+
+Una vez conectado el repo, Railway hace rebuild automático en cada `git push origin main`. No es necesario usar `railway up` habitualmente.
+
+Para configurarlo en un servicio nuevo:
+1. Dashboard → servicio → **Settings** → **Source**
+2. **Connect Repo** → seleccionar el repositorio GitHub
+3. **Root Directory**: `/backend` o `/frontend` según el servicio
+4. **Branch**: `main`
+
+A partir de ahí, cada push dispara el rebuild del servicio correspondiente.
+
+---
+
 ## Comandos útiles con Railway CLI
 
 ```bash
 # Ver logs del backend
-railway logs --service backend
+railway logs --service backend --tail 50
 
 # Abrir consola de la BD
 railway connect postgres
 
-# Ejecutar migraciones manualmente
-railway run --service backend npx prisma migrate deploy
-
 # Ver todas las variables
 railway variables --service backend
 
-# Redeploy manual
-railway up --service backend
+# Redeploy manual (cuando el auto-deploy no alcanza)
+railway redeploy --service backend
+railway redeploy --service frontend
 ```

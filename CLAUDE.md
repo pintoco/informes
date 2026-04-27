@@ -12,7 +12,7 @@ Aplicación para registrar servicios técnicos de CCTV con carga de fotos y gene
 | Cola | Redis + BullMQ (plugin Railway) |
 | Storage | MinIO (imagen Docker en Railway) |
 | Auth | JWT local (`LOCAL_AUTH=true`) — no Cognito |
-| Deploy | Railway — monorepo con `--path-as-root` por servicio |
+| Deploy | Railway — auto-deploy desde GitHub (`main` → rebuild automático) |
 
 ## Comandos de desarrollo
 
@@ -75,12 +75,18 @@ prueba/
 │   │   ├── services/              # entidad principal (órdenes de trabajo)
 │   │   ├── photos/                # presign S3, confirm, delete
 │   │   ├── pdfs/                  # generación con Puppeteer via BullMQ
+│   │   │   └── pdf-worker/templates/
+│   │   │       ├── report.html.ts # plantilla HTML del PDF
+│   │   │       └── logo.png       # logo Elemental (copiado a dist/ por NestJS assets)
 │   │   ├── storage/               # StorageInitService: crea buckets al arrancar
 │   │   └── prisma/
 │   ├── prisma/schema.prisma
+│   ├── nest-cli.json              # assets: { include: "**/*.png" } → copia logo a dist/
 │   ├── Dockerfile
 │   └── railway.toml
 ├── frontend/
+│   ├── public/
+│   │   └── favicon.png            # favicon (logo Elemental orange)
 │   ├── src/
 │   │   ├── store/authStore.ts     # Zustand — maneja login/token
 │   │   ├── api/                   # clientes axios por recurso
@@ -101,18 +107,19 @@ prueba/
 
 ## Deploy en Railway
 
-```bash
-# Subir backend
-railway service link backend
-railway up backend --path-as-root
+El repo GitHub está conectado en el dashboard de Railway (Settings → Source) para ambos servicios. Cada push a `main` dispara el rebuild automático.
 
-# Subir frontend
-railway service link frontend
-railway up frontend --path-as-root
+```bash
+# Para forzar un redeploy manual desde CLI:
+railway redeploy --service backend
+railway redeploy --service frontend
 
 # Ver logs
-railway service link backend && railway logs --tail 50
+railway logs --service backend --tail 50
+railway logs --service frontend --tail 50
 ```
+
+> **Nota**: `railway up --path-as-root` requiere un argumento de path (`railway up .`). Con auto-deploy configurado rara vez es necesario usarlo.
 
 ### Variables de referencia Railway (resolución en runtime)
 ```
@@ -146,3 +153,7 @@ curl -X POST https://backend-production-c31d.up.railway.app/api/auth/register \
 - **CORS solo acepta un origen**: `CORS_ORIGIN` es un string único. Si hay que aceptar varios dominios, modificar `main.ts` para parsear lista separada por coma.
 - **MinIO en Railway requiere `PORT=9000`**: Railway necesita saber en qué puerto escucha el contenedor.
 - **Rate limit**: 100 req / 15 min por IP. Ajustar en `main.ts` si es necesario.
+- **Logo en PDF**: el archivo `logo.png` debe estar en `backend/src/pdfs/pdf-worker/templates/`. NestJS lo copia a `dist/` gracias a la config `assets` en `nest-cli.json`. La plantilla lo lee con `fs.readFileSync(path.join(__dirname, 'logo.png'))` al cargar el módulo. No usar base64 inline en el source TypeScript — Puppeteer falla silenciosamente con strings muy largos.
+- **Zona horaria del PDF**: el servidor corre en UTC. Se usa `Intl.DateTimeFormat` con `timeZone: 'America/Santiago'` para mostrar hora chilena correcta (maneja DST automáticamente).
+- **Campos opcionales en actualización**: al borrar un comentario (NVR, Cámaras, Observaciones) y guardar, el frontend envía `""` en edición. El backend lo convierte a `null` con `dto.campo || null` para limpiar el valor en BD. No omitir el campo (undefined) porque el servicio usa `!== undefined` para decidir qué actualizar.
+- **`nombreTecnico` vacío en nuevo servicio**: el formulario de nuevo servicio solo auto-rellena `responsable`, `fono` y `email` desde el usuario logueado. `nombreTecnico` queda vacío para que el técnico lo ingrese manualmente.

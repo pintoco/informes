@@ -12,7 +12,7 @@ Aplicación web para registrar servicios técnicos de CCTV: órdenes de trabajo,
 | Cola | Redis + BullMQ |
 | Storage | MinIO (compatible S3) |
 | Auth | JWT local (email + password) |
-| Deploy | Railway |
+| Deploy | Railway (auto-deploy desde GitHub) |
 
 ## Desarrollo local
 
@@ -70,7 +70,9 @@ curl -X POST http://localhost:3001/api/auth/register \
 
 ## Deploy en Railway
 
-Ver [RAILWAY.md](RAILWAY.md) para el paso a paso completo.
+El repositorio está conectado a Railway con **auto-deploy**: cada `git push origin main` dispara el rebuild automático de ambos servicios.
+
+Ver [RAILWAY.md](RAILWAY.md) para el paso a paso completo de configuración inicial.
 
 ### URLs de producción
 
@@ -78,17 +80,13 @@ Ver [RAILWAY.md](RAILWAY.md) para el paso a paso completo.
 |---|---|
 | Frontend | `https://informes.elementalpro.cl` |
 | Backend API | `https://backend-production-c31d.up.railway.app/api` |
+| Health check | `https://backend-production-c31d.up.railway.app/api/health` |
 
 ### Subir cambios
 
 ```bash
-# Backend
-railway service link backend
-railway up backend --path-as-root
-
-# Frontend
-railway service link frontend
-railway up frontend --path-as-root
+git push origin main
+# Railway detecta el push y rebuilds backend y frontend automáticamente
 ```
 
 ## API
@@ -118,10 +116,16 @@ railway up frontend --path-as-root
 .
 ├── backend/               # NestJS API
 │   ├── src/
+│   │   └── pdfs/pdf-worker/templates/
+│   │       ├── report.html.ts   # plantilla HTML del PDF
+│   │       └── logo.png         # logo Elemental (copiado a dist por NestJS)
 │   ├── prisma/
+│   ├── nest-cli.json      # assets: copia *.png a dist/
 │   ├── Dockerfile
 │   └── railway.toml
 ├── frontend/              # React + Vite
+│   ├── public/
+│   │   └── favicon.png    # favicon (logo Elemental)
 │   ├── src/
 │   └── Dockerfile
 ├── docker-compose.local.yml
@@ -135,6 +139,7 @@ railway up frontend --path-as-root
 - Registro de órdenes de trabajo con datos del cliente y técnico
 - Carga de fotos ANTES / DESPUÉS con compresión en cliente
 - Firma digital del receptor
-- Generación asíncrona de PDFs con Puppeteer
+- Generación asíncrona de PDFs con Puppeteer (logo, zona horaria Chile, comentarios técnicos)
 - Filtros por empresa, ubicación, fecha y texto
 - Paginación en listado de servicios
+- Gestión de empresas con sucursales (locations)

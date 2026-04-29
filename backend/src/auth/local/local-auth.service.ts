@@ -27,12 +27,14 @@ export class LocalAuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    // El rol SIEMPRE es TECHNICIAN en auto-registro público.
+    // Para crear ADMIN, usar POST /users (endpoint exclusivo de ADMIN).
     const user = await this.prisma.user.create({
       data: {
         email: dto.email,
         name: dto.name,
         passwordHash,
-        role: dto.role || 'TECHNICIAN',
+        role: 'TECHNICIAN',
       },
       select: { id: true, email: true, name: true, role: true, createdAt: true },
     });

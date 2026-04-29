@@ -12,26 +12,11 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { IsString, IsNumber, IsNotEmpty } from 'class-validator';
 import { ServicesService } from './services.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 import { FilterServicesDto } from './dto/filter-services.dto';
+import { PresignPhotoDto, ConfirmPhotoDto } from './dto/photo.dto';
 import { JwtAuthGuard } from '../auth/auth.guard';
-
-class PresignRequestDto {
-  @IsString() @IsNotEmpty() filename: string;
-  @IsString() @IsNotEmpty() categoria: string;
-  @IsString() @IsNotEmpty() contentType: string;
-}
-
-class ConfirmUploadDto {
-  @IsString() @IsNotEmpty() key: string;
-  @IsString() @IsNotEmpty() url: string;
-  @IsString() @IsNotEmpty() originalName: string;
-  @IsNumber() sizeBytes: number;
-  @IsString() @IsNotEmpty() categoria: string;
-  @IsNumber() orden: number;
-}
 
 @Controller('services')
 @UseGuards(JwtAuthGuard)
@@ -55,24 +40,32 @@ export class ServicesController {
   }
 
   @Put(':id')
-  update(@Param('id') id: string, @Body() dto: UpdateServiceDto) {
-    return this.servicesService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateServiceDto,
+    @Request() req: any,
+  ) {
+    return this.servicesService.update(id, dto, req.user?.sub);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  softDelete(@Param('id') id: string) {
-    return this.servicesService.softDelete(id);
+  softDelete(@Param('id') id: string, @Request() req: any) {
+    return this.servicesService.softDelete(id, req.user?.sub);
   }
 
-  // Photos
+  // ── Photos ──────────────────────────────────────────────────────────────────
+
   @Post(':id/photos/presign')
-  getPresignedUrl(@Param('id') id: string, @Body() body: PresignRequestDto) {
+  getPresignedUrl(
+    @Param('id') id: string,
+    @Body() body: PresignPhotoDto,
+  ) {
     return this.servicesService.getPresignedPhotoUrl(
       id,
       body.filename,
       body.categoria,
-      body.contentType
+      body.contentType,
     );
   }
 
@@ -80,22 +73,26 @@ export class ServicesController {
   @HttpCode(HttpStatus.CREATED)
   confirmPhotoUpload(
     @Param('id') id: string,
-    @Body() body: ConfirmUploadDto
+    @Body() body: ConfirmPhotoDto,
   ) {
     return this.servicesService.confirmPhotoUpload(id, body);
   }
 
   @Delete(':id/photos/:photoId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  deletePhoto(@Param('id') id: string, @Param('photoId') photoId: string) {
+  deletePhoto(
+    @Param('id') id: string,
+    @Param('photoId') photoId: string,
+  ) {
     return this.servicesService.deletePhoto(id, photoId);
   }
 
-  // PDFs
+  // ── PDFs ────────────────────────────────────────────────────────────────────
+
   @Post(':id/pdfs')
   @HttpCode(HttpStatus.CREATED)
-  requestPdf(@Param('id') id: string) {
-    return this.servicesService.requestPdf(id);
+  requestPdf(@Param('id') id: string, @Request() req: any) {
+    return this.servicesService.requestPdf(id, req.user?.sub);
   }
 
   @Get(':id/pdfs/:pdfId')

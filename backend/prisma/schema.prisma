@@ -8,6 +8,35 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum Role {
+  TECHNICIAN
+  ADMIN
+  SUPER_ADMIN // reservado para uso futuro — no expuesto en ningún endpoint
+}
+
+enum MaintenanceType {
+  PREVENTIVE
+  CORRECTIVE
+  INSTALLATION
+  OTHER
+}
+
+enum PhotoCategory {
+  BEFORE
+  AFTER
+}
+
+enum PdfStatus {
+  PENDING
+  PROCESSING
+  READY
+  ERROR
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
 model User {
   id           String     @id @default(uuid())
   cognitoSub   String?    @unique
@@ -21,10 +50,7 @@ model User {
   services     Service[]
 }
 
-enum Role {
-  ADMIN
-  TECHNICIAN
-}
+// ─── Companies ────────────────────────────────────────────────────────────────
 
 model Company {
   id        String     @id @default(uuid())
@@ -45,43 +71,47 @@ model Location {
   @@index([companyId])
 }
 
+// ─── Services (Órdenes de Trabajo) ────────────────────────────────────────────
+
 model Service {
-  id                String          @id @default(uuid())
-  razonSocial       String
-  ubicacion         String
-  contactoTerreno   String
-  ordenTrabajo      String
-  fecha             DateTime
-  horaInicio        String
-  responsable       String
-  nombreTecnico     String
-  fono              String
-  email             String
-  tipoMantenimiento MaintenanceType
-  comentarioNvr     String?
-  comentarioCamaras String?
-  observaciones     String?
-  firmaUrl              String?
-  firmaNombreReceptor   String?
-  deletedAt             DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  createdBy         String?
-  user              User?           @relation(fields: [createdBy], references: [id])
-  photos            ServicePhoto[]
-  pdfs              ServicePdf[]
+  id                  String          @id @default(uuid())
+  // Número de orden único por año (YYYY-NNN). Generado con advisory lock.
+  ordenTrabajo        String          @unique
+  razonSocial         String
+  ubicacion           String
+  contactoTerreno     String
+  fecha               DateTime
+  horaInicio          String
+  responsable         String
+  nombreTecnico       String
+  fono                String
+  email               String
+  tipoMantenimiento   MaintenanceType
+  comentarioNvr       String?
+  comentarioCamaras   String?
+  observaciones       String?
+  firmaUrl            String?
+  firmaNombreReceptor String?
+
+  // Auditoría
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user   User?          @relation(fields: [createdBy], references: [id])
+  photos ServicePhoto[]
+  pdfs   ServicePdf[]
 
   @@index([ubicacion])
   @@index([fecha])
   @@index([deletedAt])
+  @@index([createdBy])
 }
 
-enum MaintenanceType {
-  PREVENTIVE
-  CORRECTIVE
-  INSTALLATION
-  OTHER
-}
+// ─── Photos ───────────────────────────────────────────────────────────────────
 
 model ServicePhoto {
   id           String        @id @default(uuid())
@@ -98,10 +128,7 @@ model ServicePhoto {
   @@index([serviceId])
 }
 
-enum PhotoCategory {
-  BEFORE
-  AFTER
-}
+// ─── PDFs ─────────────────────────────────────────────────────────────────────
 
 model ServicePdf {
   id           String    @id @default(uuid())
@@ -112,15 +139,14 @@ model ServicePdf {
   s3Key        String?
   url          String?
   errorMessage String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+
+  // Auditoría y snapshot
+  requestedBy  String?  // userId que solicitó la generación
+  generatedBy  String?  // siempre el worker ("pdf-worker")
+  dataSnapshot Json?    // snapshot del servicio al momento de generar
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([serviceId])
-}
-
-enum PdfStatus {
-  PENDING
-  PROCESSING
-  READY
-  ERROR
 }

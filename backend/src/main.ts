@@ -1,5 +1,5 @@
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { NestFactory, HttpAdapterHost } from '@nestjs/core';
+import { ValidationPipe, Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -7,20 +7,27 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
+
   const app = await NestFactory.create(AppModule, {
     logger: ['log', 'error', 'warn', 'debug'],
   });
 
+  // Shutdown hooks: permite que Prisma y BullMQ cierren conexiones limpiamente
+  app.enableShutdownHooks();
+
   // Security middleware
   app.use(helmet());
 
-  // Rate limiting
+  // Rate limiting: 100 req / 15 min por IP
   app.use(
     rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
+      windowMs: 15 * 60 * 1000,
       max: 100,
       message: { error: 'Too many requests, please try again later.' },
-    })
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
   );
 
   // CORS
@@ -43,16 +50,14 @@ async function bootstrap() {
       transformOptions: {
         enableImplicitConversion: true,
       },
-    })
+    }),
   );
 
-  // Global filters
+  // Global filters y interceptors
   app.useGlobalFilters(new HttpExceptionFilter());
-
-  // Global interceptors
   app.useGlobalInterceptors(new LoggingInterceptor());
 
-  // Health check endpoint (usado por Railway y load balancers)
+  // Health check
   const httpAdapter = app.getHttpAdapter();
   httpAdapter.get('/api/health', (_req: any, res: any) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -60,7 +65,7 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');
-  console.log(`Elemental Pro API running on port ${port}`);
+  logger.log(`Elemental Pro API running on port ${port}`);
 }
 
 bootstrap();

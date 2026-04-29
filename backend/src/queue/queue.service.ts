@@ -7,6 +7,7 @@ export interface PdfJobData {
   pdfId: string;
   serviceId: string;
   version: number;
+  requestedBy?: string;
 }
 
 @Injectable()
@@ -33,6 +34,8 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
       removeOnComplete: 100,
       removeOnFail: 50,
     });
-    this.logger.log(`PDF job enqueued: ${job.id} for service ${data.serviceId}`);
+    this.logger.log(
+      `PDF job enqueued: jobId=${job.id} serviceId=${data.serviceId} v${data.version}`,
+    );
   }
 }

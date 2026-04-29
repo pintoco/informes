@@ -15,7 +15,7 @@ import { QueueService } from '../queue/queue.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 import { FilterServicesDto } from './dto/filter-services.dto';
 import { v4 as uuidv4 } from 'uuid';
-import { Prisma } from '@prisma/client';
+import { Prisma, PhotoCategory } from '@prisma/client';
 
 @Injectable()
 export class ServicesService {
@@ -39,14 +39,12 @@ export class ServicesService {
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
     };
 
-    // Internal client for backend operations (uses minio:9000 in Docker)
     this.s3Client = new S3Client({
       region,
       ...(endpoint && { endpoint, forcePathStyle }),
       credentials,
     });
 
-    // Public client for presigned URLs (uses public endpoint so browser can reach it)
     this.s3ClientPublic = new S3Client({
       region,
       ...(publicEndpoint && { endpoint: publicEndpoint, forcePathStyle }),
@@ -60,34 +58,44 @@ export class ServicesService {
     this.s3PublicEndpoint = publicEndpoint || '';
   }
 
-  /** Build a public URL for a given bucket/key */
   private buildPublicUrl(bucket: string, key: string): string {
     if (this.s3PublicEndpoint) {
-      const base = this.s3PublicEndpoint.replace(/\/$/, '');
-      return `${base}/${bucket}/${key}`;
+      return `${this.s3PublicEndpoint.replace(/\/$/, '')}/${bucket}/${key}`;
     }
     return `https://${bucket}.s3.amazonaws.com/${key}`;
   }
 
+  /**
+   * Genera un número de orden de trabajo único usando pg_advisory_xact_lock.
+   * El lock garantiza serialización incluso bajo carga concurrente.
+   * El @unique en el campo actúa como red de seguridad a nivel de BD.
+   */
   private async generateOrdenTrabajo(): Promise<string> {
-    const year = new Date().getFullYear();
-    const result = await this.prisma.$queryRaw<{ max_num: number | null }[]>`
-      SELECT MAX(CAST(SPLIT_PART("ordenTrabajo", '-', 2) AS INTEGER)) AS max_num
-      FROM "Service"
-      WHERE "ordenTrabajo" LIKE ${`${year}-%`}
-    `;
-    const nextNum = (result[0]?.max_num ?? 0) + 1;
-    return `${year}-${nextNum.toString().padStart(3, '0')}`;
+    return this.prisma.$transaction(async (tx) => {
+      // Lock exclusivo de aplicación para la generación de OT (número arbitrario fijo)
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(987654321)`;
+
+      const year = new Date().getFullYear();
+      const result = await tx.$queryRaw<{ max_num: number | null }[]>`
+        SELECT MAX(CAST(SPLIT_PART("ordenTrabajo", '-', 2) AS INTEGER)) AS max_num
+        FROM "Service"
+        WHERE "ordenTrabajo" LIKE ${`${year}-%`}
+      `;
+      const nextNum = (result[0]?.max_num ?? 0) + 1;
+      return `${year}-${nextNum.toString().padStart(3, '0')}`;
+    });
   }
 
   async create(dto: CreateServiceDto, userId?: string) {
     const ordenTrabajo = await this.generateOrdenTrabajo();
+    this.logger.log(`Creando servicio OT=${ordenTrabajo} por usuario=${userId}`);
+
     return this.prisma.service.create({
       data: {
+        ordenTrabajo,
         razonSocial: dto.razonSocial,
         ubicacion: dto.ubicacion,
         contactoTerreno: dto.contactoTerreno,
-        ordenTrabajo,
         fecha: new Date(dto.fecha),
         horaInicio: dto.horaInicio,
         responsable: dto.responsable,
@@ -159,9 +167,13 @@ export class ServicesService {
     return service;
   }
 
-  async update(id: string, dto: UpdateServiceDto) {
+  async update(id: string, dto: UpdateServiceDto, userId?: string) {
     await this.findOne(id);
-    const updateData: Prisma.ServiceUpdateInput = {};
+
+    const updateData: Prisma.ServiceUpdateInput = {
+      updatedBy: userId,
+    };
+
     if (dto.razonSocial !== undefined) updateData.razonSocial = dto.razonSocial;
     if (dto.ubicacion !== undefined) updateData.ubicacion = dto.ubicacion;
     if (dto.contactoTerreno !== undefined) updateData.contactoTerreno = dto.contactoTerreno;
@@ -179,6 +191,8 @@ export class ServicesService {
     if (dto.firmaUrl !== undefined) updateData.firmaUrl = dto.firmaUrl;
     if (dto.firmaNombreReceptor !== undefined) updateData.firmaNombreReceptor = dto.firmaNombreReceptor;
 
+    this.logger.log(`Actualizando servicio id=${id} por usuario=${userId}`);
+
     return this.prisma.service.update({
       where: { id },
       data: updateData,
@@ -189,25 +203,26 @@ export class ServicesService {
     });
   }
 
-  async softDelete(id: string) {
+  async softDelete(id: string, userId?: string) {
     await this.findOne(id);
+    this.logger.warn(`Eliminando (soft) servicio id=${id} por usuario=${userId}`);
     return this.prisma.service.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data: { deletedAt: new Date(), deletedBy: userId },
     });
   }
 
   async getPresignedPhotoUrl(
     serviceId: string,
     filename: string,
-    categoria: string,
+    categoria: PhotoCategory,
     contentType: string,
   ) {
     await this.findOne(serviceId);
     const count = await this.prisma.servicePhoto.count({ where: { serviceId } });
     if (count >= 30) throw new BadRequestException('Maximum 30 photos per service');
 
-    const ext = filename.split('.').pop() || 'jpg';
+    const ext = filename.split('.').pop()?.toLowerCase() || 'jpg';
     const key = `services/${serviceId}/photos/${categoria.toLowerCase()}/${uuidv4()}.${ext}`;
 
     const command = new PutObjectCommand({
@@ -216,9 +231,7 @@ export class ServicesService {
       ContentType: contentType,
     });
 
-    // Use the public client so the presigned URL is signed for localhost:9000 (browser-accessible)
     const presignedUrl = await getSignedUrl(this.s3ClientPublic, command, { expiresIn: 300 });
-
     const url = this.buildPublicUrl(this.photosBucket, key);
     return { presignedUrl, key, url };
   }
@@ -230,7 +243,7 @@ export class ServicesService {
       url: string;
       originalName: string;
       sizeBytes: number;
-      categoria: string;
+      categoria: PhotoCategory;
       orden: number;
     },
   ) {
@@ -238,7 +251,7 @@ export class ServicesService {
     return this.prisma.servicePhoto.create({
       data: {
         serviceId,
-        categoria: data.categoria as any,
+        categoria: data.categoria,
         s3Key: data.key,
         url: data.url,
         originalName: data.originalName,
@@ -266,7 +279,7 @@ export class ServicesService {
     return { success: true };
   }
 
-  async requestPdf(serviceId: string) {
+  async requestPdf(serviceId: string, userId?: string) {
     await this.findOne(serviceId);
 
     const lastPdf = await this.prisma.servicePdf.findFirst({
@@ -276,11 +289,23 @@ export class ServicesService {
     const version = (lastPdf?.version || 0) + 1;
 
     const pdf = await this.prisma.servicePdf.create({
-      data: { serviceId, version, status: 'PENDING' },
+      data: {
+        serviceId,
+        version,
+        status: 'PENDING',
+        requestedBy: userId,
+      },
     });
 
+    this.logger.log(`PDF v${version} solicitado para servicio=${serviceId} por usuario=${userId}`);
+
     try {
-      await this.queueService.enqueuePdfJob({ pdfId: pdf.id, serviceId, version });
+      await this.queueService.enqueuePdfJob({
+        pdfId: pdf.id,
+        serviceId,
+        version,
+        requestedBy: userId,
+      });
     } catch (error) {
       await this.prisma.servicePdf.update({
         where: { id: pdf.id },

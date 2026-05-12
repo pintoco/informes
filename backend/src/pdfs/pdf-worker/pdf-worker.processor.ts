@@ -2,10 +2,15 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import * as sharp from 'sharp';
 import { PrismaService } from '../../prisma/prisma.service';
 import { generateReportHtml } from './templates/report.html';
 import { PDF_QUEUE } from '../../queue/queue.module';
 import { PdfJobData } from '../../queue/queue.service';
+
+// Máximo ancho de imagen embebida en el PDF. 1200px es suficiente para A4 a 150dpi.
+const PDF_IMAGE_MAX_WIDTH = 1200;
+const PDF_IMAGE_QUALITY = 72; // JPEG quality 1-100
 
 @Processor(PDF_QUEUE)
 export class PdfWorkerProcessor extends WorkerHost {
@@ -66,7 +71,7 @@ export class PdfWorkerProcessor extends WorkerHost {
         version,
       };
 
-      // Descargar fotos y convertir a base64
+      // Descargar fotos, comprimir con sharp y convertir a base64
       const photosWithData = await Promise.all(
         service.photos.map(async (photo) => {
           try {
@@ -77,12 +82,18 @@ export class PdfWorkerProcessor extends WorkerHost {
             for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
               chunks.push(chunk);
             }
-            const base64 = Buffer.concat(chunks).toString('base64');
-            const ext = photo.s3Key.split('.').pop()?.toLowerCase() || 'jpg';
-            const mime = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-            return { ...photo, dataUrl: `data:${mime};base64,${base64}` };
+            const original = Buffer.concat(chunks);
+
+            // Comprimir: redimensionar si supera PDF_IMAGE_MAX_WIDTH y convertir a JPEG
+            const compressed = await sharp(original)
+              .resize({ width: PDF_IMAGE_MAX_WIDTH, withoutEnlargement: true })
+              .jpeg({ quality: PDF_IMAGE_QUALITY, progressive: true })
+              .toBuffer();
+
+            const base64 = compressed.toString('base64');
+            return { ...photo, dataUrl: `data:image/jpeg;base64,${base64}` };
           } catch (err) {
-            this.logger.warn(`[PDF] No se pudo descargar foto ${photo.id}: ${err}`);
+            this.logger.warn(`[PDF] No se pudo procesar foto ${photo.id}: ${err}`);
             return { ...photo, dataUrl: null };
           }
         }),

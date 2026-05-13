@@ -6,13 +6,34 @@ Aplicación web para registrar servicios técnicos de CCTV: órdenes de trabajo,
 
 | Capa | Tecnología |
 |---|---|
-| Frontend | React + Vite + TypeScript + shadcn/ui (Tailwind CSS) |
+| Frontend | React 18 + Vite + TypeScript + shadcn/ui (Tailwind CSS) |
 | Backend | NestJS + TypeScript + Prisma ORM |
 | Base de datos | PostgreSQL |
 | Cola | Redis + BullMQ |
 | Storage | MinIO (compatible S3) |
 | Auth | JWT local (email + password) |
 | Deploy | Railway (auto-deploy desde GitHub) |
+
+## Funcionalidades
+
+- **Autenticación** con roles `ADMIN` y `TECHNICIAN`; contraseña con validación de complejidad
+- **Órdenes de trabajo** con numeración automática sin colisiones (advisory lock PostgreSQL)
+- **Fotos ANTES / DESPUÉS** con compresión doble: cliente (browser-image-compression) y servidor (sharp)
+- **Firma digital** del receptor con lienzo táctil
+- **Generación de PDF** asíncrona con Puppeteer vía BullMQ — reintentos automáticos con backoff exponencial
+- **Compresión de imágenes en PDF** — 70-90% menos peso (1200px máx, JPEG 72)
+- **Dashboard de estadísticas** — total de servicios, este mes, con/sin firma, top técnicos
+- **Exportar a CSV** con filtros activos (BOM UTF-8, compatible Excel)
+- **Clonar servicio** — duplica todos los campos y genera nueva OT al instante
+- **Filtros avanzados** — ubicación, técnico, tipo de mantenimiento, fecha, búsqueda global
+- **Badge de firma** en la lista de servicios (firmado / sin firma)
+- **Cámara directa en móvil** — botón que abre la cámara trasera sin pasar por galería
+- **Gestión de empresas** con sucursales (locations)
+- **Gestión de usuarios** (solo ADMIN) con soft delete y validación de servicios activos
+- **Soft delete** en servicios y usuarios con auditoría completa (createdBy, updatedBy, deletedBy)
+- **Health check** con ping real a la base de datos (responde 503 si falla)
+- **Rate limiting** — 10 intentos/15min en login, 5/hora en registro, 100/15min global
+- **Seguridad** — Helmet, CORS, JWT con validación de secreto al arrancar
 
 ## Desarrollo local
 
@@ -63,9 +84,16 @@ Frontend disponible en `http://localhost:5173`.
 ### 5. Crear usuario admin inicial
 
 ```bash
+# El registro público crea TECHNICIAN. Para crear ADMIN:
+curl -X POST http://localhost:3001/api/users \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token-admin>" \
+  -d '{"email":"admin@empresa.com","name":"Admin","password":"Password123!","role":"ADMIN"}'
+
+# O registrar directamente (queda como TECHNICIAN, luego cambiar rol via PUT /api/users/:id)
 curl -X POST http://localhost:3001/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"admin@empresa.com","name":"Admin","password":"Password123!","role":"ADMIN"}'
+  -d '{"email":"admin@empresa.com","name":"Admin","password":"Password123!"}'
 ```
 
 ## Deploy en Railway
@@ -89,57 +117,126 @@ git push origin main
 # Railway detecta el push y rebuilds backend y frontend automáticamente
 ```
 
+### Revertir a versión estable
+
+```bash
+# Volver al tag v1.0.0 (checkpoint antes de las mejoras de mayo 2026)
+git checkout v1.0.0
+
+# O desde Railway: re-deploy del commit 94675e0
+```
+
 ## API
 
+### Auth
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| POST | `/api/auth/register` | Crear usuario |
+| POST | `/api/auth/register` | Crear cuenta (siempre TECHNICIAN) |
 | POST | `/api/auth/login` | Login → JWT |
-| GET | `/api/auth/me` | Usuario actual |
-| GET | `/api/services` | Listar servicios (paginado, filtrable) |
+| GET | `/api/auth/me` | Usuario autenticado |
+
+### Servicios
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/services` | Listar (paginado, filtros: ubicacion, search, nombreTecnico, tipoMantenimiento, fechaDesde, fechaHasta) |
 | POST | `/api/services` | Crear servicio |
-| GET | `/api/services/:id` | Detalle de servicio |
-| PUT | `/api/services/:id` | Actualizar servicio |
-| DELETE | `/api/services/:id` | Eliminar (soft delete) |
-| POST | `/api/services/:id/photos/presign` | Obtener URL firmada para subir foto |
-| POST | `/api/services/:id/photos/confirm` | Confirmar foto subida |
+| GET | `/api/services/stats` | Estadísticas del dashboard |
+| GET | `/api/services/export` | Exportar CSV (respeta filtros) |
+| GET | `/api/services/:id` | Detalle |
+| PUT | `/api/services/:id` | Actualizar |
+| DELETE | `/api/services/:id` | Soft delete |
+| POST | `/api/services/:id/clone` | Clonar servicio |
+
+### Fotos
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/api/services/:id/photos/presign` | URL firmada para subir foto directo a S3 |
+| POST | `/api/services/:id/photos/confirm` | Registrar foto ya subida |
 | DELETE | `/api/services/:id/photos/:photoId` | Eliminar foto |
-| POST | `/api/services/:id/pdfs` | Generar PDF |
-| GET | `/api/services/:id/pdfs/:pdfId` | Estado del PDF |
-| GET | `/api/companies` | Listar empresas |
+
+### PDFs
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| POST | `/api/services/:id/pdfs` | Solicitar generación de PDF |
+| GET | `/api/services/:id/pdfs/:pdfId` | Estado del PDF (PENDING → PROCESSING → READY \| ERROR) |
+
+### Usuarios (solo ADMIN)
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/users` | Listar usuarios |
+| POST | `/api/users` | Crear usuario con rol |
+| PUT | `/api/users/:id` | Actualizar usuario |
+| DELETE | `/api/users/:id` | Soft delete (falla si tiene servicios activos) |
+
+### Empresas (solo ADMIN)
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/companies` | Listar empresas con sucursales |
 | POST | `/api/companies` | Crear empresa |
-| GET | `/api/health` | Health check |
+
+### Sistema
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/health` | Health check con ping a base de datos |
 
 ## Estructura
 
 ```
 .
-├── backend/               # NestJS API
+├── backend/
 │   ├── src/
-│   │   └── pdfs/pdf-worker/templates/
-│   │       ├── report.html.ts   # plantilla HTML del PDF
-│   │       └── logo.png         # logo Elemental (copiado a dist por NestJS)
-│   ├── prisma/
-│   ├── nest-cli.json      # assets: copia *.png a dist/
+│   │   ├── auth/               # JWT local + Cognito (deshabilitado)
+│   │   ├── users/              # CRUD de usuarios (ADMIN only, soft delete)
+│   │   ├── companies/          # Empresas y sucursales
+│   │   ├── services/           # Órdenes de trabajo (entidad principal)
+│   │   │   └── dto/            # create-service, filter-services, photo
+│   │   ├── photos/             # Eliminar fotos vía endpoint /photos
+│   │   ├── pdfs/               # Módulo PDF
+│   │   │   └── pdf-worker/
+│   │   │       ├── templates/
+│   │   │       │   ├── report.html.ts   # plantilla HTML del PDF
+│   │   │       │   └── logo.png         # logo (copiado a dist por NestJS)
+│   │   │       ├── pdf-worker.processor.ts  # worker BullMQ
+│   │   │       └── pdf-worker.module.ts
+│   │   ├── queue/              # QueueService con @InjectQueue
+│   │   ├── storage/            # Auto-creación de buckets al arrancar
+│   │   ├── common/             # Filtros, interceptors
+│   │   └── prisma/
+│   ├── prisma/schema.prisma
+│   ├── nest-cli.json           # assets: copia *.png a dist/
 │   ├── Dockerfile
 │   └── railway.toml
-├── frontend/              # React + Vite
+├── frontend/
 │   ├── public/
-│   │   └── favicon.png    # favicon (logo Elemental)
+│   │   └── favicon.png         # favicon (logo Elemental)
 │   ├── src/
+│   │   ├── api/                # Clientes axios (services, photos, pdfs, users, companies)
+│   │   ├── components/         # ServiceFilters, PhotoUploader, PdfStatus, Layout, UI
+│   │   ├── hooks/              # useServices, usePhotos, useAuth
+│   │   ├── pages/              # Dashboard, ServiceDetail, Create, Edit, Users, Companies
+│   │   ├── store/              # Zustand (authStore)
+│   │   └── types/              # Tipos TypeScript compartidos
 │   └── Dockerfile
 ├── docker-compose.local.yml
-├── RAILWAY.md             # Guía de deploy en Railway
-└── CLAUDE.md              # Contexto para Claude Code
+├── RAILWAY.md                  # Guía de deploy en Railway
+└── CLAUDE.md                   # Contexto para Claude Code
 ```
 
-## Funcionalidades
+## Modelo de datos
 
-- Autenticación con roles: `ADMIN` y `TECHNICIAN`
-- Registro de órdenes de trabajo con datos del cliente y técnico
-- Carga de fotos ANTES / DESPUÉS con compresión en cliente
-- Firma digital del receptor
-- Generación asíncrona de PDFs con Puppeteer (logo, zona horaria Chile, comentarios técnicos)
-- Filtros por empresa, ubicación, fecha y texto
-- Paginación en listado de servicios
-- Gestión de empresas con sucursales (locations)
+| Modelo | Descripción |
+|--------|-------------|
+| `User` | Usuarios con rol, contraseña hasheada (bcrypt), soft delete |
+| `Company` + `Location` | Jerarquía empresa → sucursal |
+| `Service` | Orden de trabajo — entidad principal con soft delete y audit trail |
+| `ServicePhoto` | Fotos BEFORE/AFTER en MinIO, con orden |
+| `ServicePdf` | PDFs generados async — estados: PENDING → PROCESSING → READY \| ERROR; incluye dataSnapshot |
+
+## Notas técnicas
+
+- **Numeración OT**: `pg_advisory_xact_lock` garantiza unicidad incluso bajo carga concurrente. El campo tiene `@unique` como red de seguridad.
+- **PDF asíncrono**: el worker descarga fotos de S3, las comprime con sharp (1200px, JPEG 72) y genera el PDF con Puppeteer. Reintenta hasta 3 veces con backoff exponencial.
+- **Zona horaria**: el servidor corre en UTC. El PDF usa `Intl.DateTimeFormat` con `timeZone: 'America/Santiago'` para hora chilena correcta (maneja DST).
+- **Soft delete**: servicios y usuarios usan `deletedAt`. Los usuarios no se pueden eliminar si tienen servicios activos.
+- **QueueService**: usa `@InjectQueue` de `@nestjs/bullmq` — una sola conexión Redis gestionada por el módulo.
+- **Buckets**: `StorageInitService` los crea automáticamente al arrancar con política de lectura pública.

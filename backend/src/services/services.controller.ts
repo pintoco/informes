@@ -9,9 +9,11 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { ServicesService } from './services.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 import { FilterServicesDto } from './dto/filter-services.dto';
@@ -26,6 +28,19 @@ export class ServicesController {
   @Get()
   findAll(@Query() filters: FilterServicesDto) {
     return this.servicesService.findAll(filters);
+  }
+
+  @Get('stats')
+  getStats() {
+    return this.servicesService.getStats();
+  }
+
+  @Get('export')
+  async exportCsv(@Query() filters: FilterServicesDto, @Res() res: Response) {
+    const csv = await this.servicesService.exportCsv(filters);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="servicios.csv"');
+    res.send(Buffer.from('﻿' + csv, 'utf-8'));
   }
 
   @Post()
@@ -98,5 +113,11 @@ export class ServicesController {
   @Get(':id/pdfs/:pdfId')
   getPdfStatus(@Param('id') id: string, @Param('pdfId') pdfId: string) {
     return this.servicesService.getPdfStatus(id, pdfId);
+  }
+
+  @Post(':id/clone')
+  @HttpCode(HttpStatus.CREATED)
+  clone(@Param('id') id: string, @Request() req: any) {
+    return this.servicesService.clone(id, req.user?.sub);
   }
 }

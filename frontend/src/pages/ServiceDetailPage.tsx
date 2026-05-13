@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit, MapPin, Phone, Mail, Calendar, Clock, User } from 'lucide-react';
+import { ArrowLeft, Edit, MapPin, Phone, Mail, Calendar, Clock, User, PenSquare } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { cloneService } from '@/api/services';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Button } from '@/components/ui/button';
@@ -61,6 +63,21 @@ export function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { currentService, loading, fetchService } = useServices();
+  const [cloning, setCloning] = useState(false);
+
+  const handleClone = async () => {
+    if (!id) return;
+    setCloning(true);
+    try {
+      const cloned = await cloneService(id);
+      toast.success(`Servicio clonado: ${cloned.ordenTrabajo}`);
+      navigate(`/services/${cloned.id}`);
+    } catch {
+      toast.error('Error al clonar el servicio');
+    } finally {
+      setCloning(false);
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -110,10 +127,16 @@ export function ServiceDetailPage() {
               <p className="text-gray-500 text-sm">OT: {currentService.ordenTrabajo}</p>
             </div>
           </div>
-          <Button onClick={() => navigate(`/services/${id}/edit`)}>
-            <Edit className="h-4 w-4 mr-2" />
-            Editar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleClone} disabled={cloning}>
+              <PenSquare className="h-4 w-4 mr-2" />
+              {cloning ? 'Clonando...' : 'Clonar'}
+            </Button>
+            <Button onClick={() => navigate(`/services/${id}/edit`)}>
+              <Edit className="h-4 w-4 mr-2" />
+              Editar
+            </Button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

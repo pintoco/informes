@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Eye, FileText, RefreshCw, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -20,10 +20,15 @@ const statusConfig: Record<
   ERROR: { label: 'Error', variant: 'error', icon: AlertCircle },
 };
 
+// 60 intentos × 5s = 5 minutos máximo de polling
+const MAX_POLL_ATTEMPTS = 60;
+
 export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
   const [pdfs, setPdfs] = useState<ServicePdf[]>(existingPdfs);
   const [requesting, setRequesting] = useState(false);
   const [pollingId, setPollingId] = useState<string | null>(null);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const pollAttemptsRef = useRef(0);
 
   const latestPdf = pdfs.length > 0 ? pdfs[pdfs.length - 1] : null;
 
@@ -31,24 +36,35 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
     async (pdfId: string) => {
       try {
         const updated = await getPdfStatus(serviceId, pdfId);
-        setPdfs((prev) =>
-          prev.map((p) => (p.id === pdfId ? updated : p))
-        );
-
+        setPdfs((prev) => prev.map((p) => (p.id === pdfId ? updated : p)));
         if (updated.status === 'READY' || updated.status === 'ERROR') {
           setPollingId(null);
+          pollAttemptsRef.current = 0;
         }
       } catch {
         // Silently fail on polling errors
       }
     },
-    [serviceId]
+    [serviceId],
   );
+
+  useEffect(() => {
+    if (!pollingId) return;
+    pollAttemptsRef.current = 0;
+    setPollTimedOut(false);
+  }, [pollingId]);
 
   useEffect(() => {
     if (!pollingId) return;
 
     const interval = setInterval(() => {
+      pollAttemptsRef.current += 1;
+      if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
+        clearInterval(interval);
+        setPollingId(null);
+        setPollTimedOut(true);
+        return;
+      }
       pollStatus(pollingId);
     }, 5000);
 
@@ -63,6 +79,7 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
 
   const handleRequestPdf = async () => {
     setRequesting(true);
+    setPollTimedOut(false);
     try {
       const pdf = await requestPdf(serviceId);
       setPdfs((prev) => [...prev, pdf]);
@@ -75,9 +92,7 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
   };
 
   const handleDownload = () => {
-    if (latestPdf?.url) {
-      downloadPdf(latestPdf.url);
-    }
+    if (latestPdf?.url) downloadPdf(latestPdf.url);
   };
 
   return (
@@ -109,18 +124,19 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
                         />
                         {config.label}
                       </Badge>
-                      <span className="text-sm text-gray-500">
-                        Versión {latestPdf.version}
-                      </span>
+                      <span className="text-sm text-gray-500">Versión {latestPdf.version}</span>
                     </>
                   );
                 })()}
               </div>
-              {latestPdf.status === 'PENDING' || latestPdf.status === 'PROCESSING' ? (
-                <p className="text-xs text-gray-400">
-                  Generando PDF... se actualizará automáticamente
+              {(latestPdf.status === 'PENDING' || latestPdf.status === 'PROCESSING') && !pollTimedOut && (
+                <p className="text-xs text-gray-400">Generando PDF... se actualizará automáticamente</p>
+              )}
+              {pollTimedOut && (
+                <p className="text-xs text-orange-500">
+                  La generación está tardando más de lo esperado. Recarga la página o reintenta.
                 </p>
-              ) : null}
+              )}
               {latestPdf.status === 'ERROR' && latestPdf.errorMessage && (
                 <p className="text-xs text-red-500">{latestPdf.errorMessage}</p>
               )}
@@ -139,12 +155,12 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
                 onClick={handleRequestPdf}
                 disabled={
                   requesting ||
-                  latestPdf.status === 'PENDING' ||
-                  latestPdf.status === 'PROCESSING'
+                  (!pollTimedOut &&
+                    (latestPdf.status === 'PENDING' || latestPdf.status === 'PROCESSING'))
                 }
               >
                 <RefreshCw className={`h-4 w-4 mr-1 ${requesting ? 'animate-spin' : ''}`} />
-                {latestPdf.status === 'ERROR' ? 'Reintentar' : 'Regenerar'}
+                {latestPdf.status === 'ERROR' || pollTimedOut ? 'Reintentar' : 'Regenerar'}
               </Button>
             </div>
           </div>
@@ -160,16 +176,11 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
                   const config = statusConfig[pdf.status];
                   return (
                     <div key={pdf.id} className="flex items-center gap-2 text-xs text-gray-500">
-                      <Badge variant={config.variant} className="text-xs">
-                        {config.label}
-                      </Badge>
+                      <Badge variant={config.variant} className="text-xs">{config.label}</Badge>
                       <span>v{pdf.version}</span>
                       <span>{new Date(pdf.createdAt).toLocaleString('es-CL')}</span>
                       {pdf.status === 'READY' && pdf.url && (
-                        <button
-                          onClick={() => downloadPdf(pdf.url!)}
-                          className="text-blue-600 hover:underline"
-                        >
+                        <button onClick={() => downloadPdf(pdf.url!)} className="text-blue-600 hover:underline">
                           Ver PDF
                         </button>
                       )}
@@ -183,9 +194,7 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
       ) : (
         <div className="text-center py-6 space-y-3">
           <FileText className="mx-auto h-10 w-10 text-gray-300" />
-          <p className="text-sm text-gray-500">
-            No se ha generado ningún informe PDF para este servicio.
-          </p>
+          <p className="text-sm text-gray-500">No se ha generado ningún informe PDF para este servicio.</p>
           <Button onClick={handleRequestPdf} disabled={requesting}>
             <FileText className="h-4 w-4 mr-2" />
             {requesting ? 'Solicitando...' : 'Generar Informe PDF'}

@@ -36,13 +36,14 @@ function PhotoGrid({
   remaining,
 }: PhotoGridProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     await onUpload(Array.from(files), categoria);
-    // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (cameraInputRef.current) cameraInputRef.current.value = '';
   };
 
   const progressValues = Object.values(uploadProgress);
@@ -82,7 +83,28 @@ function PhotoGrid({
           onChange={handleFileChange}
           disabled={remaining <= 0 || uploading}
         />
+        {/* Input de cámara: abre directamente la cámara trasera en móvil */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileChange}
+          disabled={remaining <= 0 || uploading}
+        />
       </div>
+
+      {/* Botón de cámara para móvil */}
+      {remaining > 0 && !uploading && (
+        <button
+          type="button"
+          onClick={() => cameraInputRef.current?.click()}
+          className="w-full flex items-center justify-center gap-2 py-2 text-sm text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 rounded-lg transition-colors bg-blue-50 hover:bg-blue-100 md:hidden"
+        >
+          📷 Usar cámara
+        </button>
+      )}
 
       {/* Progress bars */}
       {activeUploads > 0 && (

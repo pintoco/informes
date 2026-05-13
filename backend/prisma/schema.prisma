@@ -47,7 +47,11 @@ model User {
   role         Role       @default(TECHNICIAN)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+  deletedBy    String?
   services     Service[]
+
+  @@index([deletedAt])
 }
 
 // ─── Companies ────────────────────────────────────────────────────────────────

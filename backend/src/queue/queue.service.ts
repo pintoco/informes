@@ -1,4 +1,5 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 
 export const PDF_QUEUE = 'pdf-jobs';
@@ -11,21 +12,10 @@ export interface PdfJobData {
 }
 
 @Injectable()
-export class QueueService implements OnModuleInit, OnModuleDestroy {
+export class QueueService {
   private readonly logger = new Logger(QueueService.name);
-  private pdfQueue: Queue;
 
-  onModuleInit() {
-    this.pdfQueue = new Queue(PDF_QUEUE, {
-      connection: {
-        url: process.env.REDIS_URL || 'redis://localhost:6379',
-      },
-    });
-  }
-
-  async onModuleDestroy() {
-    await this.pdfQueue?.close();
-  }
+  constructor(@InjectQueue(PDF_QUEUE) private readonly pdfQueue: Queue) {}
 
   async enqueuePdfJob(data: PdfJobData): Promise<void> {
     const job = await this.pdfQueue.add('generate-pdf', data, {

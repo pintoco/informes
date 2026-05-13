@@ -1,5 +1,6 @@
-import { IsString, IsOptional, IsDateString, IsInt, Min, Max } from 'class-validator';
+import { IsString, IsOptional, IsDateString, IsInt, Min, Max, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
+import { MaintenanceType } from '@prisma/client';
 
 export class FilterServicesDto {
   @IsString()
@@ -17,6 +18,14 @@ export class FilterServicesDto {
   @IsString()
   @IsOptional()
   search?: string;
+
+  @IsString()
+  @IsOptional()
+  nombreTecnico?: string;
+
+  @IsEnum(MaintenanceType)
+  @IsOptional()
+  tipoMantenimiento?: MaintenanceType;
 
   @Type(() => Number)
   @IsInt()

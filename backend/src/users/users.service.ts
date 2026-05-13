@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto/create-user.dto';
 import * as bcrypt from 'bcrypt';
@@ -18,11 +18,18 @@ export class UsersService {
   };
 
   async findAll() {
-    return this.prisma.user.findMany({ select: this.select, orderBy: { name: 'asc' } });
+    return this.prisma.user.findMany({
+      where: { deletedAt: null },
+      select: this.select,
+      orderBy: { name: 'asc' },
+    });
   }
 
   async findOne(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id }, select: this.select });
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: this.select,
+    });
     if (!user) throw new NotFoundException('Usuario no encontrado');
     return user;
   }
@@ -46,7 +53,7 @@ export class UsersService {
 
   async update(id: string, dto: UpdateUserDto) {
     await this.findOne(id);
-    const data: any = {};
+    const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.phone !== undefined) data.phone = dto.phone;
     if (dto.role !== undefined) data.role = dto.role;
@@ -55,8 +62,22 @@ export class UsersService {
     return this.prisma.user.update({ where: { id }, data, select: this.select });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-    await this.prisma.user.delete({ where: { id } });
+  async remove(id: string, deletedBy?: string) {
+    const user = await this.findOne(id);
+
+    // Verificar si el usuario tiene servicios activos antes de eliminar
+    const serviceCount = await this.prisma.service.count({
+      where: { createdBy: id, deletedAt: null },
+    });
+    if (serviceCount > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar: el usuario tiene ${serviceCount} servicio(s) activo(s)`,
+      );
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { deletedAt: new Date(), deletedBy: deletedBy ?? null },
+    });
   }
 }

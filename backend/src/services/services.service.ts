@@ -114,11 +114,13 @@ export class ServicesService {
     });
   }
 
-  async findAll(filters: FilterServicesDto) {
-    const { ubicacion, fechaDesde, fechaHasta, search, page = 1, limit = 20 } = filters;
+  private buildWhere(filters: FilterServicesDto): Prisma.ServiceWhereInput {
+    const { ubicacion, fechaDesde, fechaHasta, search, nombreTecnico, tipoMantenimiento } = filters;
     const where: Prisma.ServiceWhereInput = { deletedAt: null };
 
     if (ubicacion) where.ubicacion = { contains: ubicacion, mode: 'insensitive' };
+    if (nombreTecnico) where.nombreTecnico = { contains: nombreTecnico, mode: 'insensitive' };
+    if (tipoMantenimiento) where.tipoMantenimiento = tipoMantenimiento;
     if (fechaDesde || fechaHasta) {
       where.fecha = {};
       if (fechaDesde) (where.fecha as Prisma.DateTimeFilter).gte = new Date(fechaDesde);
@@ -135,8 +137,14 @@ export class ServicesService {
         { nombreTecnico: { contains: search, mode: 'insensitive' } },
       ];
     }
+    return where;
+  }
 
+  async findAll(filters: FilterServicesDto) {
+    const { page = 1, limit = 20 } = filters;
+    const where = this.buildWhere(filters);
     const skip = (page - 1) * limit;
+
     const [total, data] = await this.prisma.$transaction([
       this.prisma.service.count({ where }),
       this.prisma.service.findMany({
@@ -152,6 +160,107 @@ export class ServicesService {
     ]);
 
     return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
+  }
+
+  async getStats() {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const where = { deletedAt: null };
+
+    const [total, thisMonth, withSignature, byMaintenance, topTechnicians] = await Promise.all([
+      this.prisma.service.count({ where }),
+      this.prisma.service.count({ where: { ...where, createdAt: { gte: startOfMonth } } }),
+      this.prisma.service.count({ where: { ...where, firmaUrl: { not: null } } }),
+      this.prisma.service.groupBy({
+        by: ['tipoMantenimiento'],
+        where,
+        _count: { id: true },
+      }),
+      this.prisma.service.groupBy({
+        by: ['nombreTecnico'],
+        where,
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 5,
+      }),
+    ]);
+
+    return {
+      total,
+      thisMonth,
+      withSignature,
+      withoutSignature: total - withSignature,
+      byMaintenance: Object.fromEntries(
+        byMaintenance.map((b) => [b.tipoMantenimiento, b._count.id]),
+      ),
+      topTechnicians: topTechnicians.map((t) => ({ name: t.nombreTecnico, count: t._count.id })),
+    };
+  }
+
+  async clone(id: string, userId?: string) {
+    const original = await this.findOne(id);
+    const ordenTrabajo = await this.generateOrdenTrabajo();
+    this.logger.log(`Clonando servicio id=${id} → OT=${ordenTrabajo} por usuario=${userId}`);
+
+    return this.prisma.service.create({
+      data: {
+        ordenTrabajo,
+        razonSocial: original.razonSocial,
+        ubicacion: original.ubicacion,
+        contactoTerreno: original.contactoTerreno,
+        fecha: original.fecha,
+        horaInicio: original.horaInicio,
+        responsable: original.responsable,
+        nombreTecnico: original.nombreTecnico,
+        fono: original.fono,
+        email: original.email,
+        tipoMantenimiento: original.tipoMantenimiento,
+        comentarioNvr: original.comentarioNvr,
+        comentarioCamaras: original.comentarioCamaras,
+        observaciones: original.observaciones,
+        createdBy: userId,
+      },
+      include: { photos: true, pdfs: true },
+    });
+  }
+
+  async exportCsv(filters: FilterServicesDto): Promise<string> {
+    const where = this.buildWhere(filters);
+    const services = await this.prisma.service.findMany({
+      where,
+      orderBy: { fecha: 'desc' },
+      include: { photos: { select: { categoria: true } } },
+    });
+
+    const maintenanceLabel = (t: string) =>
+      ({ PREVENTIVE: 'Preventivo', CORRECTIVE: 'Correctivo', INSTALLATION: 'Instalación', OTHER: 'Otro' })[t] ?? t;
+
+    const esc = (v: string | null | undefined) => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes('"') || s.includes(',') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const headers = [
+      'Orden de Trabajo', 'Razón Social', 'Ubicación', 'Contacto Terreno',
+      'Fecha', 'Hora Inicio', 'Responsable', 'Técnico', 'Fono', 'Email',
+      'Tipo Mantenimiento', 'Fotos Antes', 'Fotos Después', 'Con Firma',
+      'Comentario NVR', 'Comentario Cámaras', 'Observaciones',
+    ];
+
+    const rows = services.map((s) =>
+      [
+        s.ordenTrabajo, s.razonSocial, s.ubicacion, s.contactoTerreno,
+        s.fecha.toISOString().split('T')[0], s.horaInicio, s.responsable, s.nombreTecnico,
+        s.fono, s.email, maintenanceLabel(s.tipoMantenimiento),
+        s.photos.filter((p) => p.categoria === 'BEFORE').length.toString(),
+        s.photos.filter((p) => p.categoria === 'AFTER').length.toString(),
+        s.firmaUrl ? 'Sí' : 'No',
+        s.comentarioNvr ?? '', s.comentarioCamaras ?? '', s.observaciones ?? '',
+      ].map(esc).join(','),
+    );
+
+    return [headers.join(','), ...rows].join('\n');
   }
 
   async findOne(id: string) {

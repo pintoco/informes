@@ -1,4 +1,7 @@
-import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsIn } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsIn, Matches } from 'class-validator';
+
+const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/;
+const PASSWORD_MSG = 'La contraseña debe contener al menos una mayúscula, una minúscula y un número';
 
 export class CreateUserDto {
   @IsEmail()
@@ -12,6 +15,7 @@ export class CreateUserDto {
   @IsString()
   @MinLength(8)
   @MaxLength(64)
+  @Matches(PASSWORD_REGEX, { message: PASSWORD_MSG })
   password: string;
 
   @IsOptional()
@@ -42,5 +46,6 @@ export class UpdateUserDto {
   @IsString()
   @MinLength(8)
   @MaxLength(64)
+  @Matches(PASSWORD_REGEX, { message: PASSWORD_MSG })
   password?: string;
 }

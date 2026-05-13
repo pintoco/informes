@@ -86,8 +86,19 @@ export interface ServiceFilters {
   fechaDesde?: string;
   fechaHasta?: string;
   search?: string;
+  nombreTecnico?: string;
+  tipoMantenimiento?: MaintenanceType;
   page?: number;
   limit?: number;
+}
+
+export interface StatsResponse {
+  total: number;
+  thisMonth: number;
+  withSignature: number;
+  withoutSignature: number;
+  byMaintenance: Partial<Record<MaintenanceType, number>>;
+  topTechnicians: Array<{ name: string; count: number }>;
 }
 
 export interface CreateServiceDto {

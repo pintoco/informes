@@ -9,7 +9,11 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
+import archiver from 'archiver';
+import { Readable } from 'stream';
+import type { Response } from 'express';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { QueueService } from '../queue/queue.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
@@ -438,5 +442,48 @@ export class ServicesService {
     });
     if (!pdf) throw new NotFoundException('PDF not found');
     return pdf;
+  }
+
+  async streamBulkPdfZip(serviceIds: string[], res: Response): Promise<void> {
+    // Get all READY PDFs for the requested services ordered by version desc
+    const allPdfs = await this.prisma.servicePdf.findMany({
+      where: {
+        serviceId: { in: serviceIds },
+        status: 'READY',
+        s3Key: { not: null },
+      },
+      orderBy: { version: 'desc' },
+      include: { service: { select: { ordenTrabajo: true } } },
+    });
+
+    // Keep only the latest per service (first occurrence since ordered desc)
+    const seen = new Set<string>();
+    const latestPdfs = allPdfs.filter((pdf) => {
+      if (seen.has(pdf.serviceId)) return false;
+      seen.add(pdf.serviceId);
+      return true;
+    });
+
+    const today = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="informes-${today}.zip"`);
+
+    const zip = archiver('zip', { zlib: { level: 5 } });
+    zip.on('error', (err) => { this.logger.error('Archiver error', err); res.end(); });
+    zip.pipe(res);
+
+    for (const pdf of latestPdfs) {
+      try {
+        const command = new GetObjectCommand({ Bucket: this.pdfsBucket, Key: pdf.s3Key! });
+        const s3Res = await this.s3Client.send(command);
+        if (s3Res.Body) {
+          zip.append(s3Res.Body as unknown as Readable, { name: `${pdf.service.ordenTrabajo}.pdf` });
+        }
+      } catch (err) {
+        this.logger.warn(`No se pudo obtener PDF ${pdf.id} de S3`, err);
+      }
+    }
+
+    await zip.finalize();
   }
 }

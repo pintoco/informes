@@ -18,7 +18,7 @@ import {
 import { ServiceFilters } from '@/components/ServiceFilters';
 import { Layout } from '@/components/Layout';
 import { useServices } from '@/hooks/useServices';
-import { getStats, exportServicesCsv, cloneService } from '@/api/services';
+import { getStats, exportServicesCsv, cloneService, bulkDownloadPdfs } from '@/api/services';
 import { Service, ServiceFilters as IServiceFilters, PdfStatus, StatsResponse } from '@/types';
 
 const pdfStatusConfig: Record<
@@ -67,6 +67,8 @@ export function DashboardPage() {
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [exporting, setExporting] = useState(false);
   const [cloningId, setCloningId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDownloading, setBulkDownloading] = useState(false);
 
   useEffect(() => {
     fetchServices(filters);
@@ -80,6 +82,7 @@ export function DashboardPage() {
     const merged = { ...newFilters, page: 1, limit: filters.limit };
     setActiveFilters(newFilters);
     setFilters(merged);
+    setSelectedIds(new Set());
   }, [filters.limit]);
 
   const handlePageChange = (newPage: number) => {
@@ -123,6 +126,36 @@ export function DashboardPage() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!services?.data) return;
+    if (selectedIds.size === services.data.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(services.data.map((s) => s.id)));
+    }
+  };
+
+  const handleBulkDownload = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDownloading(true);
+    try {
+      await bulkDownloadPdfs(Array.from(selectedIds));
+      toast.success(`ZIP descargado con los informes seleccionados`);
+    } catch {
+      toast.error('Error al descargar los PDFs');
+    } finally {
+      setBulkDownloading(false);
+    }
+  };
+
   const latestPdfStatus = (service: Service) => {
     if (!service.pdfs || service.pdfs.length === 0) return null;
     return service.pdfs[service.pdfs.length - 1];
@@ -162,6 +195,33 @@ export function DashboardPage() {
         {/* Filters */}
         <ServiceFilters onFilter={handleFilter} loading={loading} />
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg px-4 py-2">
+            <span className="text-sm text-blue-700 font-medium">
+              {selectedIds.size} servicio{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setSelectedIds(new Set())}
+                className="text-blue-700 border-blue-300"
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleBulkDownload}
+                disabled={bulkDownloading}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                {bulkDownloading ? 'Descargando...' : `Descargar PDFs (${selectedIds.size})`}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
           {loading ? (
@@ -173,6 +233,15 @@ export function DashboardPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50">
+                    <TableHead className="w-10">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 cursor-pointer"
+                        checked={!!services?.data.length && selectedIds.size === services.data.length}
+                        onChange={toggleSelectAll}
+                        title="Seleccionar todos"
+                      />
+                    </TableHead>
                     <TableHead>Orden de Trabajo</TableHead>
                     <TableHead>Razón Social</TableHead>
                     <TableHead>Ubicación</TableHead>
@@ -187,7 +256,7 @@ export function DashboardPage() {
                 <TableBody>
                   {services?.data.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-gray-500 py-12">
+                      <TableCell colSpan={10} className="text-center text-gray-500 py-12">
                         No se encontraron servicios
                       </TableCell>
                     </TableRow>
@@ -197,7 +266,15 @@ export function DashboardPage() {
                       const pdfConfig = pdf ? pdfStatusConfig[pdf.status] : null;
                       const isCloning = cloningId === service.id;
                       return (
-                        <TableRow key={service.id} className="hover:bg-gray-50">
+                        <TableRow key={service.id} className={`hover:bg-gray-50 ${selectedIds.has(service.id) ? 'bg-blue-50' : ''}`}>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 cursor-pointer"
+                              checked={selectedIds.has(service.id)}
+                              onChange={() => toggleSelect(service.id)}
+                            />
+                          </TableCell>
                           <TableCell className="font-medium">{service.ordenTrabajo}</TableCell>
                           <TableCell>{service.razonSocial}</TableCell>
                           <TableCell className="text-gray-600">{service.ubicacion}</TableCell>

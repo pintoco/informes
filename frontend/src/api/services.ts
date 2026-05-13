@@ -74,3 +74,20 @@ export const updateService = async (
 export const deleteService = async (id: string): Promise<void> => {
   await apiClient.delete(`/services/${id}`);
 };
+
+export const bulkDownloadPdfs = async (serviceIds: string[]): Promise<void> => {
+  const today = new Date().toISOString().split('T')[0];
+  const response = await apiClient.post(
+    '/services/bulk-pdf-download',
+    { serviceIds },
+    { responseType: 'blob' },
+  );
+  const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/zip' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `informes-${today}.zip`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};

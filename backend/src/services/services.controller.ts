@@ -35,6 +35,18 @@ export class ServicesController {
     return this.servicesService.getStats();
   }
 
+  @Post('bulk-pdf-download')
+  async bulkPdfDownload(
+    @Body('serviceIds') serviceIds: string[],
+    @Res() res: Response,
+  ) {
+    if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+      res.status(400).json({ message: 'serviceIds is required' });
+      return;
+    }
+    await this.servicesService.streamBulkPdfZip(serviceIds, res);
+  }
+
   @Get('export')
   async exportCsv(@Query() filters: FilterServicesDto, @Res() res: Response) {
     const csv = await this.servicesService.exportCsv(filters);

@@ -12,9 +12,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const userPoolId = configService.get<string>('COGNITO_USER_POOL_ID', '');
 
     if (isLocal) {
+      const secret = configService.get<string>('JWT_SECRET');
+      if (!secret) throw new Error('JWT_SECRET environment variable is not set');
       super({
         jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-        secretOrKey: configService.get<string>('JWT_SECRET', 'dev-secret'),
+        secretOrKey: secret,
         ignoreExpiration: false,
       });
     } else {

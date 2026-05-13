@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCompanyDto, CreateLocationDto } from './dto/company.dto';
 
@@ -31,7 +31,15 @@ export class CompaniesService {
   }
 
   async removeCompany(id: string) {
-    await this.findCompany(id);
+    const company = await this.findCompany(id);
+    const serviceCount = await this.prisma.service.count({
+      where: { razonSocial: company.name, deletedAt: null },
+    });
+    if (serviceCount > 0) {
+      throw new BadRequestException(
+        `No se puede eliminar: hay ${serviceCount} servicio(s) activo(s) asociados a esta empresa`,
+      );
+    }
     await this.prisma.company.delete({ where: { id } });
   }
 

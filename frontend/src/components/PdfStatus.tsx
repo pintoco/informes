@@ -32,6 +32,15 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
 
   const latestPdf = pdfs.length > 0 ? pdfs[pdfs.length - 1] : null;
 
+  const notifyPdfReady = useCallback((version: number) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('PDF listo', {
+        body: `El informe PDF v${version} está listo para descargar.`,
+        icon: '/favicon.png',
+      });
+    }
+  }, []);
+
   const pollStatus = useCallback(
     async (pdfId: string) => {
       try {
@@ -40,12 +49,13 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
         if (updated.status === 'READY' || updated.status === 'ERROR') {
           setPollingId(null);
           pollAttemptsRef.current = 0;
+          if (updated.status === 'READY') notifyPdfReady(updated.version);
         }
       } catch {
         // Silently fail on polling errors
       }
     },
-    [serviceId],
+    [serviceId, notifyPdfReady],
   );
 
   useEffect(() => {
@@ -80,6 +90,9 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
   const handleRequestPdf = async () => {
     setRequesting(true);
     setPollTimedOut(false);
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
     try {
       const pdf = await requestPdf(serviceId);
       setPdfs((prev) => [...prev, pdf]);

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight,
-  Download, PenSquare, CheckCircle, XCircle, BarChart3,
+  Download, PenSquare, CheckCircle, XCircle, BarChart3, Trophy,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -156,6 +156,37 @@ export function DashboardPage() {
             <StatCard label="Este mes" value={stats.thisMonth} icon={BarChart3} color="bg-indigo-500" />
             <StatCard label="Con firma" value={stats.withSignature} icon={CheckCircle} color="bg-green-500" />
             <StatCard label="Sin firma" value={stats.withoutSignature} icon={XCircle} color="bg-orange-400" />
+          </div>
+        )}
+
+        {/* Top Technicians */}
+        {stats && stats.topTechnicians.length > 0 && (
+          <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <Trophy className="h-4 w-4 text-yellow-500" />
+              Top Técnicos
+            </h3>
+            <div className="space-y-2">
+              {stats.topTechnicians.map((t, i) => {
+                const maxCount = stats.topTechnicians[0].count;
+                const pct = Math.round((t.count / maxCount) * 100);
+                return (
+                  <div key={t.name} className="flex items-center gap-3">
+                    <span className="text-xs font-bold text-gray-400 w-4 shrink-0">{i + 1}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-6 relative overflow-hidden">
+                      <div
+                        className="absolute inset-y-0 left-0 bg-blue-500 rounded-full transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                      <span className="absolute inset-0 flex items-center px-2 text-xs font-medium text-gray-800 truncate">
+                        {t.name}
+                      </span>
+                    </div>
+                    <span className="text-xs font-bold text-gray-600 w-8 text-right shrink-0">{t.count}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 

@@ -1,5 +1,5 @@
 import apiClient from './client';
-import { User } from '@/types';
+import { User, PaginatedResponse } from '@/types';
 
 export interface CreateUserDto {
   email: string;
@@ -16,8 +16,8 @@ export interface UpdateUserDto {
   password?: string;
 }
 
-export const listUsers = async (): Promise<User[]> => {
-  const { data } = await apiClient.get<User[]>('/users');
+export const listUsers = async (page = 1, limit = 50): Promise<PaginatedResponse<User>> => {
+  const { data } = await apiClient.get<PaginatedResponse<User>>('/users', { params: { page, limit } });
   return data;
 };
 

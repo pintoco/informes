@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, X, Check } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Check, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,23 +12,35 @@ import toast from 'react-hot-toast';
 const roleLabel: Record<string, string> = { ADMIN: 'Administrador', TECHNICIAN: 'Técnico' };
 const roleVariant: Record<string, 'info' | 'warning'> = { ADMIN: 'info', TECHNICIAN: 'warning' };
 
+const LIMIT = 20;
+
 export function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [form, setForm] = useState<CreateUserDto>({ email: '', name: '', password: '', phone: '', role: 'TECHNICIAN' });
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  const load = async (p = page) => {
     try {
       setLoading(true);
-      setUsers(await listUsers());
-    } catch { toast.error('Error al cargar usuarios'); }
-    finally { setLoading(false); }
+      const result = await listUsers(p, LIMIT);
+      setUsers(result.data);
+      setTotal(result.total);
+      setTotalPages(result.totalPages);
+      setPage(result.page);
+    } catch {
+      toast.error('Error al cargar usuarios');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(page); }, [page]);
 
   const openCreate = () => {
     setEditingUser(null);
@@ -57,10 +69,12 @@ export function UsersPage() {
         toast.success('Usuario creado');
       }
       setShowForm(false);
-      await load();
+      await load(page);
     } catch (e: any) {
       toast.error(e.response?.data?.message || 'Error al guardar');
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (u: User) => {
@@ -68,8 +82,10 @@ export function UsersPage() {
     try {
       await deleteUser(u.id);
       toast.success('Usuario eliminado');
-      await load();
-    } catch { toast.error('Error al eliminar'); }
+      await load(page);
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Error al eliminar');
+    }
   };
 
   return (
@@ -78,7 +94,7 @@ export function UsersPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Gestión de Usuarios</h1>
-            <p className="text-sm text-gray-500">{users.length} usuario{users.length !== 1 ? 's' : ''} registrado{users.length !== 1 ? 's' : ''}</p>
+            <p className="text-sm text-gray-500">{total} usuario{total !== 1 ? 's' : ''} registrado{total !== 1 ? 's' : ''}</p>
           </div>
           <Button onClick={openCreate}>
             <Plus className="h-4 w-4 mr-2" />Nuevo Usuario
@@ -136,37 +152,56 @@ export function UsersPage() {
           ) : users.length === 0 ? (
             <p className="text-center text-gray-500 py-12">No hay usuarios registrados</p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {['Nombre', 'Email', 'Teléfono', 'Rol', 'Acciones'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {users.map(u => (
-                  <tr key={u.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
-                    <td className="px-4 py-3 text-gray-600">{u.email}</td>
-                    <td className="px-4 py-3 text-gray-600">{u.phone || '—'}</td>
-                    <td className="px-4 py-3">
-                      <Badge variant={roleVariant[u.role]}>{roleLabel[u.role]}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex gap-2">
-                        <button onClick={() => openEdit(u)} className="text-gray-400 hover:text-blue-600 transition-colors">
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button onClick={() => handleDelete(u)} className="text-gray-400 hover:text-red-600 transition-colors">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
+            <>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    {['Nombre', 'Email', 'Teléfono', 'Rol', 'Acciones'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {users.map(u => (
+                    <tr key={u.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{u.name}</td>
+                      <td className="px-4 py-3 text-gray-600">{u.email}</td>
+                      <td className="px-4 py-3 text-gray-600">{u.phone || '—'}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant={roleVariant[u.role]}>{roleLabel[u.role]}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2">
+                          <button onClick={() => openEdit(u)} className="text-gray-400 hover:text-blue-600 transition-colors">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button onClick={() => handleDelete(u)} className="text-gray-400 hover:text-red-600 transition-colors">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+                  <p className="text-sm text-gray-500">
+                    Página {page} de {totalPages} ({total} usuarios)
+                  </p>
+                  <div className="flex items-center space-x-2">
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page <= 1}>
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={page >= totalPages}>
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

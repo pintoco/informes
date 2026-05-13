@@ -1,5 +1,5 @@
-import React, { useRef } from 'react';
-import { Upload, Trash2, Image } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Upload, Trash2, Image, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,28 @@ interface PhotoGridProps {
   remaining: number;
 }
 
+interface LightboxState { src: string; name: string }
+
+function Lightbox({ src, name, onClose }: LightboxState & { onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <button onClick={onClose} className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors">
+        <X className="h-8 w-8" />
+      </button>
+      <div className="max-w-5xl max-h-full" onClick={(e) => e.stopPropagation()}>
+        <img src={src} alt={name} className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" />
+        <p className="text-white/70 text-center text-sm mt-3 truncate">{name}</p>
+      </div>
+    </div>
+  );
+}
+
 function PhotoGrid({
   photos,
   categoria,
@@ -37,6 +59,7 @@ function PhotoGrid({
 }: PhotoGridProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [lightbox, setLightbox] = useState<LightboxState | null>(null);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -126,11 +149,15 @@ function PhotoGrid({
         </div>
       )}
 
+      {/* Lightbox */}
+      {lightbox && <Lightbox src={lightbox.src} name={lightbox.name} onClose={() => setLightbox(null)} />}
+
       {/* Photos grid */}
       {photos.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {photos.map((photo) => (
-            <div key={photo.id} className="relative group rounded-lg overflow-hidden border border-gray-200 aspect-square">
+            <div key={photo.id} className="relative group rounded-lg overflow-hidden border border-gray-200 aspect-square cursor-zoom-in"
+              onClick={() => setLightbox({ src: photo.url, name: photo.originalName })}>
               <img
                 src={photo.url}
                 alt={photo.originalName}
@@ -141,7 +168,7 @@ function PhotoGrid({
                 <Button
                   variant="destructive"
                   size="icon"
-                  onClick={() => onDelete(photo.id)}
+                  onClick={(e) => { e.stopPropagation(); onDelete(photo.id); }}
                   className="h-8 w-8"
                 >
                   <Trash2 className="h-4 w-4" />

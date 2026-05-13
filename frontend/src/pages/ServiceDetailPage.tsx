@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Edit, MapPin, Phone, Mail, Calendar, Clock, User, PenSquare } from 'lucide-react';
+import { ArrowLeft, Edit, MapPin, Phone, Mail, Calendar, Clock, User, PenSquare, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cloneService } from '@/api/services';
 import { format } from 'date-fns';
@@ -27,24 +27,28 @@ const maintenanceBadgeVariant: Record<MaintenanceType, 'info' | 'warning' | 'suc
   OTHER: 'outline',
 };
 
+interface LightboxState {
+  src: string;
+  name: string;
+}
+
 interface PhotoGalleryProps {
   titulo: string;
   photos: Array<{ id: string; url: string; originalName: string }>;
+  onOpenLightbox: (src: string, name: string) => void;
 }
 
-function PhotoGallery({ titulo, photos }: PhotoGalleryProps) {
+function PhotoGallery({ titulo, photos, onOpenLightbox }: PhotoGalleryProps) {
   if (photos.length === 0) return null;
   return (
     <div className="space-y-3">
       <h4 className="font-medium text-gray-700">{titulo}</h4>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
         {photos.map((photo) => (
-          <a
+          <button
             key={photo.id}
-            href={photo.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block rounded-lg overflow-hidden border border-gray-200 aspect-square hover:opacity-90 transition-opacity"
+            onClick={() => onOpenLightbox(photo.url, photo.originalName)}
+            className="block rounded-lg overflow-hidden border border-gray-200 aspect-square hover:opacity-90 transition-opacity cursor-zoom-in w-full"
           >
             <img
               src={photo.url}
@@ -52,8 +56,38 @@ function PhotoGallery({ titulo, photos }: PhotoGalleryProps) {
               className="w-full h-full object-cover"
               loading="lazy"
             />
-          </a>
+          </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function Lightbox({ src, name, onClose }: LightboxState & { onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 text-white/80 hover:text-white transition-colors"
+      >
+        <X className="h-8 w-8" />
+      </button>
+      <div className="max-w-5xl max-h-full" onClick={(e) => e.stopPropagation()}>
+        <img
+          src={src}
+          alt={name}
+          className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+        />
+        <p className="text-white/70 text-center text-sm mt-3 truncate">{name}</p>
       </div>
     </div>
   );
@@ -64,6 +98,7 @@ export function ServiceDetailPage() {
   const navigate = useNavigate();
   const { currentService, loading, fetchService } = useServices();
   const [cloning, setCloning] = useState(false);
+  const [lightbox, setLightbox] = useState<LightboxState | null>(null);
 
   const handleClone = async () => {
     if (!id) return;
@@ -113,6 +148,7 @@ export function ServiceDetailPage() {
 
   return (
     <Layout>
+      {lightbox && <Lightbox src={lightbox.src} name={lightbox.name} onClose={() => setLightbox(null)} />}
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -274,8 +310,8 @@ export function ServiceDetailPage() {
                   <CardTitle>Fotografías ({currentService.photos.length})</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <PhotoGallery titulo="Antes del servicio" photos={beforePhotos} />
-                  <PhotoGallery titulo="Después del servicio" photos={afterPhotos} />
+                  <PhotoGallery titulo="Antes del servicio" photos={beforePhotos} onOpenLightbox={(src, name) => setLightbox({ src, name })} />
+                  <PhotoGallery titulo="Después del servicio" photos={afterPhotos} onOpenLightbox={(src, name) => setLightbox({ src, name })} />
                 </CardContent>
               </Card>
             )}
@@ -284,13 +320,19 @@ export function ServiceDetailPage() {
             {currentService.firmaUrl && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Firma del Técnico</CardTitle>
+                  <CardTitle>Firma del Receptor</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-3">
+                  {currentService.firmaNombreReceptor && (
+                    <div>
+                      <p className="text-xs text-gray-500">Nombre del receptor</p>
+                      <p className="text-sm font-medium">{currentService.firmaNombreReceptor}</p>
+                    </div>
+                  )}
                   <div className="border rounded-lg p-4 bg-gray-50 inline-block">
                     <img
                       src={currentService.firmaUrl}
-                      alt="Firma del técnico"
+                      alt="Firma del receptor"
                       className="max-h-32 object-contain"
                     />
                   </div>

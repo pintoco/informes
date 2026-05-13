@@ -48,7 +48,7 @@ export class LocalAuthService {
       where: { email: dto.email },
     });
 
-    if (!user || !user.passwordHash) {
+    if (!user || user.deletedAt !== null || !user.passwordHash) {
       throw new UnauthorizedException('Invalid credentials');
     }
 

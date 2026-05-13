@@ -17,12 +17,19 @@ export class UsersService {
     updatedAt: true,
   };
 
-  async findAll() {
-    return this.prisma.user.findMany({
-      where: { deletedAt: null },
-      select: this.select,
-      orderBy: { name: 'asc' },
-    });
+  async findAll(page = 1, limit = 50) {
+    const skip = (page - 1) * limit;
+    const [total, data] = await this.prisma.$transaction([
+      this.prisma.user.count({ where: { deletedAt: null } }),
+      this.prisma.user.findMany({
+        where: { deletedAt: null },
+        select: this.select,
+        orderBy: { name: 'asc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findOne(id: string) {

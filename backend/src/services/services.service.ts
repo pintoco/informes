@@ -169,7 +169,7 @@ export class ServicesService {
 
     const [total, thisMonth, withSignature, byMaintenance, topTechnicians] = await Promise.all([
       this.prisma.service.count({ where }),
-      this.prisma.service.count({ where: { ...where, createdAt: { gte: startOfMonth } } }),
+      this.prisma.service.count({ where: { ...where, fecha: { gte: startOfMonth } } }),
       this.prisma.service.count({ where: { ...where, firmaUrl: { not: null } } }),
       this.prisma.service.groupBy({
         by: ['tipoMantenimiento'],
@@ -208,7 +208,7 @@ export class ServicesService {
         razonSocial: original.razonSocial,
         ubicacion: original.ubicacion,
         contactoTerreno: original.contactoTerreno,
-        fecha: original.fecha,
+        fecha: new Date(),
         horaInicio: original.horaInicio,
         responsable: original.responsable,
         nombreTecnico: original.nombreTecnico,
@@ -235,6 +235,12 @@ export class ServicesService {
     const maintenanceLabel = (t: string) =>
       ({ PREVENTIVE: 'Preventivo', CORRECTIVE: 'Correctivo', INSTALLATION: 'Instalación', OTHER: 'Otro' })[t] ?? t;
 
+    const formatDate = (d: Date) => {
+      const day = d.getDate().toString().padStart(2, '0');
+      const month = (d.getMonth() + 1).toString().padStart(2, '0');
+      return `${day}/${month}/${d.getFullYear()}`;
+    };
+
     const esc = (v: string | null | undefined) => {
       if (v == null) return '';
       const s = String(v);
@@ -251,7 +257,7 @@ export class ServicesService {
     const rows = services.map((s) =>
       [
         s.ordenTrabajo, s.razonSocial, s.ubicacion, s.contactoTerreno,
-        s.fecha.toISOString().split('T')[0], s.horaInicio, s.responsable, s.nombreTecnico,
+        formatDate(s.fecha), s.horaInicio, s.responsable, s.nombreTecnico,
         s.fono, s.email, maintenanceLabel(s.tipoMantenimiento),
         s.photos.filter((p) => p.categoria === 'BEFORE').length.toString(),
         s.photos.filter((p) => p.categoria === 'AFTER').length.toString(),

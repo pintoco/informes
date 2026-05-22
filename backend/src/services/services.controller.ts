@@ -44,7 +44,11 @@ export class ServicesController {
       res.status(400).json({ message: 'serviceIds is required' });
       return;
     }
-    await this.servicesService.streamBulkPdfZip(serviceIds, res);
+    const today = new Date().toISOString().split('T')[0];
+    const buffer = await this.servicesService.buildBulkPdfZip(serviceIds);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="informes-${today}.zip"`);
+    res.send(buffer);
   }
 
   @Get('export')

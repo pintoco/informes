@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight,
-  Download, PenSquare, CheckCircle, XCircle, BarChart3,
+  Download, CheckCircle, XCircle, BarChart3,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,7 +18,7 @@ import {
 import { ServiceFilters } from '@/components/ServiceFilters';
 import { Layout } from '@/components/Layout';
 import { useServices } from '@/hooks/useServices';
-import { getStats, exportServicesCsv, cloneService, bulkDownloadPdfs } from '@/api/services';
+import { getStats, exportServicesCsv, bulkDownloadPdfs } from '@/api/services';
 import { Service, ServiceFilters as IServiceFilters, PdfStatus, StatsResponse } from '@/types';
 
 const pdfStatusConfig: Record<
@@ -66,7 +66,6 @@ export function DashboardPage() {
   const [deleting, setDeleting] = useState(false);
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [exporting, setExporting] = useState(false);
-  const [cloningId, setCloningId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDownloading, setBulkDownloading] = useState(false);
 
@@ -110,19 +109,6 @@ export function DashboardPage() {
       toast.error('Error al exportar');
     } finally {
       setExporting(false);
-    }
-  };
-
-  const handleClone = async (service: Service) => {
-    setCloningId(service.id);
-    try {
-      const cloned = await cloneService(service.id);
-      toast.success(`Servicio clonado: ${cloned.ordenTrabajo}`);
-      navigate(`/services/${cloned.id}`);
-    } catch {
-      toast.error('Error al clonar el servicio');
-    } finally {
-      setCloningId(null);
     }
   };
 
@@ -264,7 +250,6 @@ export function DashboardPage() {
                     services?.data.map((service) => {
                       const pdf = latestPdfStatus(service);
                       const pdfConfig = pdf ? pdfStatusConfig[pdf.status] : null;
-                      const isCloning = cloningId === service.id;
                       return (
                         <TableRow key={service.id} className={`hover:bg-gray-50 ${selectedIds.has(service.id) ? 'bg-blue-50' : ''}`}>
                           <TableCell onClick={(e) => e.stopPropagation()}>
@@ -319,14 +304,6 @@ export function DashboardPage() {
                                 title="Editar"
                               >
                                 <Edit className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost" size="icon"
-                                onClick={() => handleClone(service)}
-                                disabled={isCloning}
-                                title="Clonar servicio"
-                              >
-                                <PenSquare className={`h-4 w-4 ${isCloning ? 'animate-pulse text-blue-500' : ''}`} />
                               </Button>
                               <Button
                                 variant="ghost" size="icon"

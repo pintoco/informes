@@ -12,7 +12,7 @@ import {
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
 import archiver from 'archiver';
-import { Readable } from 'stream';
+import { Readable, PassThrough } from 'stream';
 import type { Response } from 'express';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { QueueService } from '../queue/queue.service';
@@ -444,7 +444,7 @@ export class ServicesService {
     return pdf;
   }
 
-  async streamBulkPdfZip(serviceIds: string[], res: Response): Promise<void> {
+  async buildBulkPdfZip(serviceIds: string[]): Promise<Buffer> {
     // Get all READY PDFs for the requested services ordered by version desc
     const allPdfs = await this.prisma.servicePdf.findMany({
       where: {
@@ -464,26 +464,41 @@ export class ServicesService {
       return true;
     });
 
-    const today = new Date().toISOString().split('T')[0];
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="informes-${today}.zip"`);
-
-    const zip = archiver('zip', { zlib: { level: 5 } });
-    zip.on('error', (err) => { this.logger.error('Archiver error', err); res.end(); });
-    zip.pipe(res);
-
-    for (const pdf of latestPdfs) {
-      try {
-        const command = new GetObjectCommand({ Bucket: this.pdfsBucket, Key: pdf.s3Key! });
-        const s3Res = await this.s3Client.send(command);
-        if (s3Res.Body) {
-          zip.append(s3Res.Body as unknown as Readable, { name: `${pdf.service.ordenTrabajo}.pdf` });
+    // Download all PDFs from S3 as buffers in parallel
+    const items = await Promise.all(
+      latestPdfs.map(async (pdf) => {
+        try {
+          const command = new GetObjectCommand({ Bucket: this.pdfsBucket, Key: pdf.s3Key! });
+          const s3Res = await this.s3Client.send(command);
+          const chunks: Uint8Array[] = [];
+          for await (const chunk of s3Res.Body as AsyncIterable<Uint8Array>) {
+            chunks.push(chunk);
+          }
+          return { buffer: Buffer.concat(chunks), name: `${pdf.service.ordenTrabajo}.pdf` };
+        } catch (err) {
+          this.logger.warn(`No se pudo obtener PDF ${pdf.id} de S3`, err);
+          return null;
         }
-      } catch (err) {
-        this.logger.warn(`No se pudo obtener PDF ${pdf.id} de S3`, err);
-      }
-    }
+      }),
+    );
 
-    await zip.finalize();
+    // Build ZIP in memory and return as Buffer
+    return new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      const pass = new PassThrough();
+      pass.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+      pass.on('end', () => resolve(Buffer.concat(chunks)));
+      pass.on('error', reject);
+
+      const zip = archiver('zip', { zlib: { level: 5 } });
+      zip.on('error', reject);
+      zip.pipe(pass);
+
+      for (const item of items) {
+        if (item) zip.append(item.buffer, { name: item.name });
+      }
+
+      zip.finalize();
+    });
   }
 }

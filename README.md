@@ -298,7 +298,7 @@ git checkout v1.0.0
 - **Numeración OT**: `pg_advisory_xact_lock` garantiza unicidad incluso bajo carga concurrente. El campo `ordenTrabajo` tiene `@unique` como red de seguridad adicional.
 - **JWT por request**: en modo `LOCAL_AUTH=true`, cada request autenticado consulta la BD para obtener el rol actualizado y verificar que el usuario no esté eliminado. Si el usuario fue desactivado, el token vigente queda inválido de inmediato.
 - **PDF asíncrono**: el worker descarga fotos de S3, las comprime con sharp (1200 px, JPEG 72) y genera el PDF con Puppeteer. Reintenta hasta 3 veces con backoff exponencial (5 s inicial).
-- **Descarga masiva ZIP**: el endpoint `bulk-pdf-download` obtiene los archivos PDF directamente desde MinIO en el servidor y los empaqueta con `archiver` antes de enviarlos al cliente, evitando problemas de CORS.
+- **Descarga masiva ZIP**: el endpoint `bulk-pdf-download` obtiene los archivos PDF directamente desde MinIO en el servidor y los empaqueta con `adm-zip` antes de enviarlos al cliente, evitando problemas de CORS. Se usa `adm-zip` en lugar de `archiver` porque este último es ESM-only a partir de v7, incompatible con el output CommonJS de NestJS.
 - **Zona horaria**: el servidor corre en UTC. El PDF usa `Intl.DateTimeFormat` con `timeZone: 'America/Santiago'` para hora chilena correcta (maneja DST automáticamente).
 - **Soft delete**: servicios y usuarios usan `deletedAt`. Los usuarios y empresas no se pueden eliminar si tienen servicios activos.
 - **Buckets MinIO**: `StorageInitService` los crea automáticamente al arrancar vía `OnModuleInit`. No es necesario crearlos manualmente.

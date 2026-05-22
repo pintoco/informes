@@ -11,9 +11,7 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
-import archiver from 'archiver';
-import { Readable, PassThrough } from 'stream';
-import type { Response } from 'express';
+import * as AdmZip from 'adm-zip';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { QueueService } from '../queue/queue.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
@@ -445,7 +443,6 @@ export class ServicesService {
   }
 
   async buildBulkPdfZip(serviceIds: string[]): Promise<Buffer> {
-    // Get all READY PDFs for the requested services ordered by version desc
     const allPdfs = await this.prisma.servicePdf.findMany({
       where: {
         serviceId: { in: serviceIds },
@@ -456,7 +453,6 @@ export class ServicesService {
       include: { service: { select: { ordenTrabajo: true } } },
     });
 
-    // Keep only the latest per service (first occurrence since ordered desc)
     const seen = new Set<string>();
     const latestPdfs = allPdfs.filter((pdf) => {
       if (seen.has(pdf.serviceId)) return false;
@@ -464,8 +460,11 @@ export class ServicesService {
       return true;
     });
 
-    // Download all PDFs from S3 as buffers in parallel
-    const items = await Promise.all(
+    this.logger.log(`Bulk PDF: ${serviceIds.length} servicios solicitados, ${latestPdfs.length} PDFs READY encontrados`);
+
+    const zip = new AdmZip();
+
+    await Promise.all(
       latestPdfs.map(async (pdf) => {
         try {
           const command = new GetObjectCommand({ Bucket: this.pdfsBucket, Key: pdf.s3Key! });
@@ -474,31 +473,15 @@ export class ServicesService {
           for await (const chunk of s3Res.Body as AsyncIterable<Uint8Array>) {
             chunks.push(chunk);
           }
-          return { buffer: Buffer.concat(chunks), name: `${pdf.service.ordenTrabajo}.pdf` };
+          const buffer = Buffer.concat(chunks);
+          zip.addFile(`${pdf.service.ordenTrabajo}.pdf`, buffer);
+          this.logger.log(`PDF agregado al ZIP: ${pdf.service.ordenTrabajo}.pdf (${buffer.length} bytes)`);
         } catch (err) {
           this.logger.warn(`No se pudo obtener PDF ${pdf.id} de S3`, err);
-          return null;
         }
       }),
     );
 
-    // Build ZIP in memory and return as Buffer
-    return new Promise<Buffer>((resolve, reject) => {
-      const chunks: Buffer[] = [];
-      const pass = new PassThrough();
-      pass.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-      pass.on('end', () => resolve(Buffer.concat(chunks)));
-      pass.on('error', reject);
-
-      const zip = archiver('zip', { zlib: { level: 5 } });
-      zip.on('error', reject);
-      zip.pipe(pass);
-
-      for (const item of items) {
-        if (item) zip.append(item.buffer, { name: item.name });
-      }
-
-      zip.finalize();
-    });
+    return zip.toBuffer();
   }
 }

@@ -87,7 +87,7 @@ copy_bucket "${RAILWAY_BUCKET_PDFS:-elemental-pdfs}" "$S3_BUCKET_PDFS"
 echo "==> 5/6 Iniciando backend (aplica migraciones pendientes sobre los datos restaurados)"
 docker compose up -d backend
 for i in $(seq 1 30); do
-  if docker compose exec -T backend wget -qO- http://localhost:3001/api/health >/dev/null 2>&1; then
+  if docker compose exec -T backend wget -qO- http://127.0.0.1:3001/api/health >/dev/null 2>&1; then
     break
   fi
   sleep 4

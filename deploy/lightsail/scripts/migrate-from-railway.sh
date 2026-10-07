@@ -27,6 +27,10 @@ DB_NAME="${DB_NAME:-elemental_pro}"
 
 TS=$(date +%Y%m%d-%H%M%S)
 mkdir -p backups
+# Docker crea ./backups como root al montarlo en el servicio `backup`
+if [ ! -w backups ]; then
+  sudo chown "$(id -u):$(id -g)" backups
+fi
 
 echo "⚠️  Esto REEMPLAZA la base de datos de Lightsail con la de Railway."
 if [ "${1:-}" != "--yes" ]; then

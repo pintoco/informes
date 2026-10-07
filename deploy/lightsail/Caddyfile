@@ -1,7 +1,5 @@
 # Caddy obtiene y renueva el certificado HTTPS de Let's Encrypt automáticamente.
-{
-	email {$ACME_EMAIL}
-}
+# (Opcional: agregar un bloque global { email tu@correo } para recibir avisos de expiración.)
 
 {$DOMAIN} {
 	encode zstd gzip

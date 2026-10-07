@@ -24,7 +24,6 @@ services:
       - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN:?Definir DOMAIN en .env}
-      ACME_EMAIL: ${ACME_EMAIL:?Definir ACME_EMAIL en .env}
       # Orígenes extra para la CSP (vacío en producción; lo usa la prueba local)
       CSP_EXTRA_SOURCES: ${CSP_EXTRA_SOURCES:-}
     volumes:

@@ -42,13 +42,16 @@ export class UsersService {
   }
 
   async create(dto: CreateUserDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const email = dto.email.trim();
+    const existing = await this.prisma.user.findFirst({
+      where: { email: { equals: email, mode: 'insensitive' } },
+    });
     if (existing) throw new ConflictException('El email ya está registrado');
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await bcrypt.hash(dto.password, 12);
     return this.prisma.user.create({
       data: {
-        email: dto.email,
+        email,
         name: dto.name,
         phone: dto.phone,
         passwordHash,
@@ -59,18 +62,29 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto) {
-    await this.findOne(id);
+    const user = await this.findOne(id);
     const data: Record<string, unknown> = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.phone !== undefined) data.phone = dto.phone;
-    if (dto.role !== undefined) data.role = dto.role;
-    if (dto.password) data.passwordHash = await bcrypt.hash(dto.password, 10);
+    if (dto.role !== undefined) {
+      if (user.role === 'ADMIN' && dto.role !== 'ADMIN') await this.assertNotLastAdmin();
+      data.role = dto.role;
+    }
+    if (dto.password) {
+      data.passwordHash = await bcrypt.hash(dto.password, 12);
+      // Invalida los tokens emitidos antes del cambio (ver JwtStrategy.validate)
+      data.passwordChangedAt = new Date();
+    }
 
     return this.prisma.user.update({ where: { id }, data, select: this.select });
   }
 
   async remove(id: string, deletedBy?: string) {
     const user = await this.findOne(id);
+    if (id === deletedBy) {
+      throw new BadRequestException('No puedes eliminar tu propio usuario');
+    }
+    if (user.role === 'ADMIN') await this.assertNotLastAdmin();
 
     // Verificar si el usuario tiene servicios activos antes de eliminar
     const serviceCount = await this.prisma.service.count({
@@ -86,5 +100,12 @@ export class UsersService {
       where: { id: user.id },
       data: { deletedAt: new Date(), deletedBy: deletedBy ?? null },
     });
+  }
+
+  private async assertNotLastAdmin() {
+    const admins = await this.prisma.user.count({ where: { role: 'ADMIN', deletedAt: null } });
+    if (admins <= 1) {
+      throw new BadRequestException('Debe quedar al menos un administrador activo');
+    }
   }
 }

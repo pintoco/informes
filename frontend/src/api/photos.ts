@@ -1,5 +1,7 @@
 import axios from 'axios';
 import imageCompression from 'browser-image-compression';
+// Copia local de la librería para el Web Worker (por defecto la baja de cdn.jsdelivr.net)
+import imageCompressionLibUrl from 'browser-image-compression/dist/browser-image-compression.js?url';
 import apiClient from './client';
 import {
   PhotoCategory,
@@ -50,6 +52,7 @@ export const compressAndUpload = async (
     maxSizeMB: 1,
     maxWidthOrHeight: 1920,
     useWebWorker: true,
+    libURL: new URL(imageCompressionLibUrl, window.location.origin).href,
     onProgress,
   };
 
@@ -60,6 +63,7 @@ export const compressAndUpload = async (
     filename: file.name,
     categoria,
     contentType: compressedFile.type || 'image/jpeg',
+    sizeBytes: compressedFile.size,
   });
 
   // Upload directly to S3
@@ -72,9 +76,7 @@ export const compressAndUpload = async (
   // Confirm upload in backend
   const photo = await confirmPhotoUpload(serviceId, {
     key: presignedData.key,
-    url: presignedData.url,
     originalName: file.name,
-    sizeBytes: compressedFile.size,
     categoria,
     orden,
   });

@@ -2,9 +2,9 @@
 dockerfilePath = "Dockerfile"
 
 [deploy]
-# Ejecuta migraciones antes de arrancar el servidor
-startCommand = "sh -c 'npx prisma db push --accept-data-loss && node dist/main'"
+# El Dockerfile aplica migraciones versionadas (prisma migrate deploy) antes de arrancar.
+startCommand = "./docker-entrypoint.sh"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 60
+healthcheckTimeout = 120
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3

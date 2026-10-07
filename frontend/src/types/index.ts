@@ -124,19 +124,17 @@ export interface PresignedUrlRequest {
   filename: string;
   categoria: PhotoCategory;
   contentType: string;
+  sizeBytes: number;
 }
 
 export interface PresignedUrlResponse {
   presignedUrl: string;
   key: string;
-  url: string;
 }
 
 export interface ConfirmPhotoUploadDto {
   key: string;
-  url: string;
   originalName: string;
-  sizeBytes: number;
   categoria: PhotoCategory;
   orden: number;
 }

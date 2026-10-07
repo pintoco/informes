@@ -7,7 +7,13 @@ import {
   IsDateString,
   MaxLength,
   MinLength,
+  Matches,
 } from 'class-validator';
+
+// La firma se guarda como data URL (generada por el canvas del frontend).
+// Se valida el formato para que no pueda inyectar HTML en la plantilla del PDF.
+export const SIGNATURE_DATA_URL = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/;
+const MAX_SIGNATURE_LENGTH = 700_000;
 
 export enum MaintenanceType {
   PREVENTIVE = 'PREVENTIVE',
@@ -85,6 +91,8 @@ export class CreateServiceDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(MAX_SIGNATURE_LENGTH)
+  @Matches(SIGNATURE_DATA_URL, { message: 'firmaUrl debe ser una imagen PNG/JPEG en formato data URL' })
   firmaUrl?: string;
 
   @IsString()
@@ -163,6 +171,8 @@ export class UpdateServiceDto {
 
   @IsString()
   @IsOptional()
+  @MaxLength(MAX_SIGNATURE_LENGTH)
+  @Matches(SIGNATURE_DATA_URL, { message: 'firmaUrl debe ser una imagen PNG/JPEG en formato data URL' })
   firmaUrl?: string;
 
   @IsString()

@@ -1,13 +1,12 @@
-import {
-  Injectable,
-  ConflictException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../../prisma/prisma.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
+
+// Hash válido usado cuando el email no existe, para que la respuesta tarde lo mismo
+// y no revele qué emails están registrados.
+const DUMMY_HASH = '$2b$10$lplHNhK7pn0oCyTUZNGkSeiQzM/IylWV1Zaq.RHP6qLc3LtQbu0VC';
 
 @Injectable()
 export class LocalAuthService {
@@ -16,48 +15,18 @@ export class LocalAuthService {
     private readonly jwtService: JwtService,
   ) {}
 
-  async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({
-      where: { email: dto.email },
-    });
-
-    if (existing) {
-      throw new ConflictException('Email already registered');
-    }
-
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-
-    // El rol SIEMPRE es TECHNICIAN en auto-registro público.
-    // Para crear ADMIN, usar POST /users (endpoint exclusivo de ADMIN).
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        name: dto.name,
-        passwordHash,
-        role: 'TECHNICIAN',
-      },
-      select: { id: true, email: true, name: true, role: true, createdAt: true },
-    });
-
-    const token = this.signToken(user);
-    return { user, token };
-  }
-
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: dto.email.trim(), mode: 'insensitive' } },
     });
 
-    if (!user || user.deletedAt !== null || !user.passwordHash) {
+    const usable = !!user && user.deletedAt === null && !!user.passwordHash;
+    const valid = await bcrypt.compare(dto.password, usable ? user.passwordHash! : DUMMY_HASH);
+    if (!usable || !valid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    const token = this.signToken(user);
+    const token = this.jwtService.sign({ sub: user.id, role: user.role });
     return {
       user: {
         id: user.id,
@@ -67,14 +36,5 @@ export class LocalAuthService {
       },
       token,
     };
-  }
-
-  private signToken(user: { id: string; email: string; name: string; role: string }) {
-    return this.jwtService.sign({
-      sub: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    });
   }
 }

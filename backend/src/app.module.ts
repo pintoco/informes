@@ -6,7 +6,6 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CompaniesModule } from './companies/companies.module';
 import { ServicesModule } from './services/services.module';
-import { PhotosModule } from './photos/photos.module';
 import { PdfsModule } from './pdfs/pdfs.module';
 import { StorageModule } from './storage/storage.module';
 
@@ -23,7 +22,6 @@ import { StorageModule } from './storage/storage.module';
     UsersModule,
     CompaniesModule,
     ServicesModule,
-    PhotosModule,
     PdfsModule,
     StorageModule,
   ],

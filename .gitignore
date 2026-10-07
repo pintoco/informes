@@ -82,3 +82,7 @@ backend/.env.local
 .cache/
 tmp/
 temp/
+
+# ── Lightsail: respaldos y env reales ─────────────────────────
+deploy/lightsail/backups/
+deploy/lightsail/.env

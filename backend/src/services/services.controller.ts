@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  ParseUUIDPipe,
   Query,
   UseGuards,
   Request,
@@ -18,7 +19,9 @@ import { ServicesService } from './services.service';
 import { CreateServiceDto, UpdateServiceDto } from './dto/create-service.dto';
 import { FilterServicesDto } from './dto/filter-services.dto';
 import { PresignPhotoDto, ConfirmPhotoDto } from './dto/photo.dto';
+import { BulkPdfDownloadDto } from './dto/bulk-pdf.dto';
 import { JwtAuthGuard } from '../auth/auth.guard';
+import { RolesGuard, Roles } from '../auth/roles.guard';
 
 @Controller('services')
 @UseGuards(JwtAuthGuard)
@@ -36,16 +39,10 @@ export class ServicesController {
   }
 
   @Post('bulk-pdf-download')
-  async bulkPdfDownload(
-    @Body('serviceIds') serviceIds: string[],
-    @Res() res: Response,
-  ) {
-    if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
-      res.status(400).json({ message: 'serviceIds is required' });
-      return;
-    }
+  @HttpCode(HttpStatus.OK)
+  async bulkPdfDownload(@Body() dto: BulkPdfDownloadDto, @Res() res: Response) {
     const today = new Date().toISOString().split('T')[0];
-    const buffer = await this.servicesService.buildBulkPdfZip(serviceIds);
+    const buffer = await this.servicesService.buildBulkPdfZip(dto.serviceIds);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="informes-${today}.zip"`);
     res.send(buffer);
@@ -66,22 +63,25 @@ export class ServicesController {
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
+  findOne(@Param('id', ParseUUIDPipe) id: string) {
     return this.servicesService.findOne(id);
   }
 
   @Put(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateServiceDto,
     @Request() req: any,
   ) {
     return this.servicesService.update(id, dto, req.user?.sub);
   }
 
+  // Solo ADMIN puede eliminar servicios
   @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
   @HttpCode(HttpStatus.NO_CONTENT)
-  softDelete(@Param('id') id: string, @Request() req: any) {
+  softDelete(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.servicesService.softDelete(id, req.user?.sub);
   }
 
@@ -89,21 +89,21 @@ export class ServicesController {
 
   @Post(':id/photos/presign')
   getPresignedUrl(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() body: PresignPhotoDto,
   ) {
     return this.servicesService.getPresignedPhotoUrl(
       id,
-      body.filename,
       body.categoria,
       body.contentType,
+      body.sizeBytes,
     );
   }
 
   @Post(':id/photos/confirm')
   @HttpCode(HttpStatus.CREATED)
   confirmPhotoUpload(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ConfirmPhotoDto,
   ) {
     return this.servicesService.confirmPhotoUpload(id, body);
@@ -112,8 +112,8 @@ export class ServicesController {
   @Delete(':id/photos/:photoId')
   @HttpCode(HttpStatus.NO_CONTENT)
   deletePhoto(
-    @Param('id') id: string,
-    @Param('photoId') photoId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('photoId', ParseUUIDPipe) photoId: string,
   ) {
     return this.servicesService.deletePhoto(id, photoId);
   }
@@ -122,18 +122,21 @@ export class ServicesController {
 
   @Post(':id/pdfs')
   @HttpCode(HttpStatus.CREATED)
-  requestPdf(@Param('id') id: string, @Request() req: any) {
+  requestPdf(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.servicesService.requestPdf(id, req.user?.sub);
   }
 
   @Get(':id/pdfs/:pdfId')
-  getPdfStatus(@Param('id') id: string, @Param('pdfId') pdfId: string) {
+  getPdfStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('pdfId', ParseUUIDPipe) pdfId: string,
+  ) {
     return this.servicesService.getPdfStatus(id, pdfId);
   }
 
   @Post(':id/clone')
   @HttpCode(HttpStatus.CREATED)
-  clone(@Param('id') id: string, @Request() req: any) {
+  clone(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
     return this.servicesService.clone(id, req.user?.sub);
   }
 }

@@ -1,0 +1,134 @@
+# ============================================================
+# Elemental Pro — Producción en AWS Lightsail (una sola instancia)
+#
+# Uso (desde deploy/lightsail/):
+#   cp .env.example .env   # completar valores
+#   docker compose up -d --build
+#
+# Solo Caddy expone puertos (80/443). Postgres y Redis quedan en la red
+# interna de Docker, sin acceso desde Internet. Fotos y PDFs van a Amazon S3
+# (buckets privados, acceso con URLs firmadas): ver scripts/create-aws-resources.sh
+# Límites de memoria pensados para una instancia de 2 GB + 2 GB de swap.
+# ============================================================
+
+name: elemental
+
+services:
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Definir DOMAIN en .env}
+      ACME_EMAIL: ${ACME_EMAIL:?Definir ACME_EMAIL en .env}
+      # Orígenes extra para la CSP (vacío en producción; lo usa la prueba local)
+      CSP_EXTRA_SOURCES: ${CSP_EXTRA_SOURCES:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    mem_limit: 128m
+
+  frontend:
+    build:
+      context: ../../frontend
+      args:
+        VITE_API_URL: /api
+    restart: unless-stopped
+    mem_limit: 64m
+
+  backend:
+    build:
+      context: ../../backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      TRUST_PROXY: 1
+      DATABASE_URL: postgresql://${DB_USER:-elemental}:${DB_PASSWORD:?Definir DB_PASSWORD}@db:5432/${DB_NAME:-elemental_pro}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      CORS_ORIGIN: https://${DOMAIN}
+      # Amazon S3 — credenciales del usuario IAM con acceso solo a estos dos buckets
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:?Definir AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:?Definir AWS_SECRET_ACCESS_KEY}
+      S3_BUCKET_PHOTOS: ${S3_BUCKET_PHOTOS:?Definir S3_BUCKET_PHOTOS}
+      S3_BUCKET_PDFS: ${S3_BUCKET_PDFS:?Definir S3_BUCKET_PDFS}
+      # Los buckets ya los crea create-aws-resources.sh (privados, con CORS)
+      S3_INIT_BUCKETS: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    mem_limit: 1g
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-elemental}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-elemental_pro}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 256m
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "64mb", "--maxmemory-policy", "noeviction", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    mem_limit: 96m
+
+  # Respaldo diario de la base de datos (se conservan 14 días en ./backups).
+  # Los snapshots de Lightsail respaldan además el disco completo.
+  # Los archivos en S3 tienen versionado activado (ver create-aws-resources.sh).
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGHOST: db
+      PGUSER: ${DB_USER:-elemental}
+      PGPASSWORD: ${DB_PASSWORD}
+      PGDATABASE: ${DB_NAME:-elemental_pro}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/backup-loop.sh"]
+    mem_limit: 64m
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:
+  redis_data:

@@ -1,9 +1,10 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import * as sharp from 'sharp';
+import puppeteer, { Browser } from 'puppeteer';
 import { PrismaService } from '../../prisma/prisma.service';
+import { StorageService } from '../../storage/storage.service';
 import { generateReportHtml } from './templates/report.html';
 import { PDF_QUEUE } from '../../queue/queue.module';
 import { PdfJobData } from '../../queue/queue.service';
@@ -11,35 +12,27 @@ import { PdfJobData } from '../../queue/queue.service';
 // Máximo ancho de imagen embebida en el PDF. 1200px es suficiente para A4 a 150dpi.
 const PDF_IMAGE_MAX_WIDTH = 1200;
 const PDF_IMAGE_QUALITY = 72; // JPEG quality 1-100
+const PDF_RENDER_TIMEOUT_MS = 60_000;
 
-@Processor(PDF_QUEUE)
+// concurrency 1: un solo Chromium a la vez (importante en instancias de 2 GB)
+@Processor(PDF_QUEUE, { concurrency: 1 })
 export class PdfWorkerProcessor extends WorkerHost {
   private readonly logger = new Logger(PdfWorkerProcessor.name);
-  private readonly s3: S3Client;
-  private readonly photosBucket = process.env.S3_BUCKET_PHOTOS || 'elemental-photos';
-  private readonly pdfsBucket = process.env.S3_BUCKET_PDFS || 'elemental-pdfs';
-  private readonly s3PublicEndpoint = process.env.S3_PUBLIC_ENDPOINT || process.env.S3_ENDPOINT || '';
 
-  constructor(private readonly prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+  ) {
     super();
-    this.s3 = new S3Client({
-      region: process.env.AWS_REGION || 'us-east-1',
-      endpoint: process.env.S3_ENDPOINT,
-      forcePathStyle: process.env.S3_FORCE_PATH_STYLE === 'true',
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
-      },
-    });
   }
 
   async process(job: Job<PdfJobData>): Promise<void> {
-    const { pdfId, serviceId, version, requestedBy } = job.data;
+    const { pdfId, serviceId, version } = job.data;
     this.logger.log(`[PDF] Iniciando generación: jobId=${job.id} pdfId=${pdfId} serviceId=${serviceId} v${version}`);
 
     await this.prisma.servicePdf.update({
       where: { id: pdfId },
-      data: { status: 'PROCESSING' },
+      data: { status: 'PROCESSING', errorMessage: null },
     });
 
     try {
@@ -71,40 +64,63 @@ export class PdfWorkerProcessor extends WorkerHost {
         version,
       };
 
-      // Descargar fotos, comprimir con sharp y convertir a base64
-      const photosWithData = await Promise.all(
-        service.photos.map(async (photo) => {
-          try {
-            const res = await this.s3.send(
-              new GetObjectCommand({ Bucket: this.photosBucket, Key: photo.s3Key }),
-            );
-            const chunks: Uint8Array[] = [];
-            for await (const chunk of res.Body as AsyncIterable<Uint8Array>) {
-              chunks.push(chunk);
-            }
-            const original = Buffer.concat(chunks);
+      // Descargar fotos de a una (menos RAM), comprimir con sharp y convertir a base64
+      const photosWithData = [];
+      for (const photo of service.photos) {
+        try {
+          const original = await this.storage.getBuffer(this.storage.photosBucket, photo.s3Key);
+          const compressed = await sharp(original)
+            .rotate() // respeta la orientación EXIF de fotos de celular
+            .resize({ width: PDF_IMAGE_MAX_WIDTH, withoutEnlargement: true })
+            .jpeg({ quality: PDF_IMAGE_QUALITY, progressive: true })
+            .toBuffer();
+          photosWithData.push({ ...photo, dataUrl: `data:image/jpeg;base64,${compressed.toString('base64')}` });
+        } catch (err) {
+          this.logger.warn(`[PDF] No se pudo procesar foto ${photo.id}: ${err}`);
+          photosWithData.push({ ...photo, dataUrl: null });
+        }
+      }
 
-            // Comprimir: redimensionar si supera PDF_IMAGE_MAX_WIDTH y convertir a JPEG
-            const compressed = await sharp(original)
-              .resize({ width: PDF_IMAGE_MAX_WIDTH, withoutEnlargement: true })
-              .jpeg({ quality: PDF_IMAGE_QUALITY, progressive: true })
-              .toBuffer();
+      const html = generateReportHtml(service, photosWithData);
+      const pdfBuffer = await this.renderPdf(html);
 
-            const base64 = compressed.toString('base64');
-            return { ...photo, dataUrl: `data:image/jpeg;base64,${base64}` };
-          } catch (err) {
-            this.logger.warn(`[PDF] No se pudo procesar foto ${photo.id}: ${err}`);
-            return { ...photo, dataUrl: null };
-          }
-        }),
-      );
+      // Subir PDF a S3/MinIO
+      const pdfKey = `services/${serviceId}/pdfs/${pdfId}.pdf`;
+      await this.storage.put(this.storage.pdfsBucket, pdfKey, pdfBuffer, 'application/pdf');
 
-      const html = generateReportHtml(service as any, photosWithData as any);
+      await this.prisma.servicePdf.update({
+        where: { id: pdfId },
+        data: {
+          status: 'READY',
+          s3Key: pdfKey,
+          url: this.storage.buildObjectUrl(this.storage.pdfsBucket, pdfKey),
+          generatedBy: 'pdf-worker',
+          dataSnapshot,
+        },
+      });
 
-      // Generar PDF con Puppeteer
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const puppeteer = require('puppeteer');
-      const browser = await puppeteer.launch({
+      this.logger.log(`[PDF] Generado OK: pdfId=${pdfId} key=${pdfKey}`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`[PDF] Error en pdfId=${pdfId}: ${msg}`, error instanceof Error ? error.stack : undefined);
+
+      const willRetry = job.attemptsMade + 1 < (job.opts.attempts ?? 1);
+      await this.prisma.servicePdf.update({
+        where: { id: pdfId },
+        // Mientras queden reintentos se deja PENDING para que el frontend siga esperando
+        data: willRetry
+          ? { status: 'PENDING', errorMessage: msg }
+          : { status: 'ERROR', errorMessage: msg },
+      });
+
+      throw error; // BullMQ reintentará según la config del job
+    }
+  }
+
+  private async renderPdf(html: string): Promise<Buffer> {
+    let browser: Browser | undefined;
+    try {
+      browser = await puppeteer.launch({
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
@@ -115,53 +131,31 @@ export class PdfWorkerProcessor extends WorkerHost {
         ],
       });
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      const pdfBuffer = await page.pdf({
+      await page.setJavaScriptEnabled(false);
+
+      // El HTML es autocontenido (imágenes en data URLs): se bloquea cualquier petición
+      // de red para que un contenido malicioso no pueda alcanzar servicios internos.
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        const url = req.url();
+        if (url.startsWith('data:') || url === 'about:blank') {
+          req.continue();
+        } else {
+          req.abort();
+        }
+      });
+
+      await page.setContent(html, { waitUntil: 'load', timeout: PDF_RENDER_TIMEOUT_MS });
+      const pdf = await page.pdf({
         format: 'A4',
         printBackground: true,
         margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
+        timeout: PDF_RENDER_TIMEOUT_MS,
       });
-      await browser.close();
-
-      // Subir PDF a S3/MinIO
-      const pdfKey = `services/${serviceId}/pdfs/${pdfId}.pdf`;
-      await this.s3.send(
-        new PutObjectCommand({
-          Bucket: this.pdfsBucket,
-          Key: pdfKey,
-          Body: pdfBuffer,
-          ContentType: 'application/pdf',
-          ContentDisposition: `inline; filename="informe-${service.ordenTrabajo}.pdf"`,
-        }),
-      );
-
-      const endpoint = this.s3PublicEndpoint
-        ? this.s3PublicEndpoint.replace(/\/$/, '')
-        : `https://${this.pdfsBucket}.s3.amazonaws.com`;
-      const pdfUrl = `${endpoint}/${this.pdfsBucket}/${pdfKey}`;
-
-      await this.prisma.servicePdf.update({
-        where: { id: pdfId },
-        data: {
-          status: 'READY',
-          s3Key: pdfKey,
-          url: pdfUrl,
-          generatedBy: 'pdf-worker',
-          dataSnapshot,
-        },
-      });
-
-      this.logger.log(`[PDF] Generado OK: pdfId=${pdfId} url=${pdfUrl}`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`[PDF] Error en pdfId=${pdfId}: ${msg}`, error instanceof Error ? error.stack : undefined);
-
-      await this.prisma.servicePdf.update({
-        where: { id: pdfId },
-        data: { status: 'ERROR', errorMessage: msg },
-      });
-
-      throw error; // BullMQ reintentará según la config del job
+      return Buffer.from(pdf);
+    } finally {
+      // Siempre cerrar Chromium, incluso si falla: evita procesos huérfanos consumiendo RAM
+      await browser?.close().catch(() => undefined);
     }
   }
 }

@@ -1,50 +1,37 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
-  S3Client,
   CreateBucketCommand,
   HeadBucketCommand,
-  PutBucketPolicyCommand,
+  DeleteBucketPolicyCommand,
 } from '@aws-sdk/client-s3';
+import { StorageService } from './storage.service';
 
 @Injectable()
 export class StorageInitService implements OnModuleInit {
   private readonly logger = new Logger(StorageInitService.name);
-  private readonly s3Client: S3Client;
 
-  constructor() {
-    const endpoint = process.env.S3_ENDPOINT;
-    const forcePathStyle = process.env.S3_FORCE_PATH_STYLE === 'true';
-
-    this.s3Client = new S3Client({
-      region: process.env.AWS_REGION || 'us-east-1',
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'minioadmin',
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'minioadmin123',
-      },
-      ...(endpoint && { endpoint, forcePathStyle }),
-    });
-  }
+  constructor(private readonly storage: StorageService) {}
 
   async onModuleInit() {
-    const photosBucket = process.env.S3_BUCKET_PHOTOS || 'elemental-photos';
-    const pdfsBucket = process.env.S3_BUCKET_PDFS || 'elemental-pdfs';
-
-    for (const bucket of [photosBucket, pdfsBucket]) {
-      await this.ensureBucket(bucket);
+    // En AWS S3 los buckets se crean aparte (create-aws-resources.sh) y el usuario IAM
+    // de la app no tiene permisos de administración: S3_INIT_BUCKETS=false.
+    if (process.env.S3_INIT_BUCKETS === 'false') {
+      this.logger.log('S3_INIT_BUCKETS=false: se omite la creación/configuración de buckets');
+      return;
     }
-
-    // Both buckets need public read so the browser can load images and PDFs directly
-    await this.setPublicReadPolicy(photosBucket);
-    await this.setPublicReadPolicy(pdfsBucket);
+    for (const bucket of [this.storage.photosBucket, this.storage.pdfsBucket]) {
+      await this.ensureBucket(bucket);
+      await this.ensurePrivate(bucket);
+    }
   }
 
   private async ensureBucket(bucket: string) {
     try {
-      await this.s3Client.send(new HeadBucketCommand({ Bucket: bucket }));
+      await this.storage.internal.send(new HeadBucketCommand({ Bucket: bucket }));
       this.logger.log(`Bucket "${bucket}" already exists`);
     } catch {
       try {
-        await this.s3Client.send(new CreateBucketCommand({ Bucket: bucket }));
+        await this.storage.internal.send(new CreateBucketCommand({ Bucket: bucket }));
         this.logger.log(`Bucket "${bucket}" created`);
       } catch (err: any) {
         this.logger.error(`Failed to create bucket "${bucket}": ${err.message}`);
@@ -52,26 +39,16 @@ export class StorageInitService implements OnModuleInit {
     }
   }
 
-  private async setPublicReadPolicy(bucket: string) {
-    const policy = JSON.stringify({
-      Version: '2012-10-17',
-      Statement: [
-        {
-          Effect: 'Allow',
-          Principal: { AWS: ['*'] },
-          Action: ['s3:GetObject'],
-          Resource: [`arn:aws:s3:::${bucket}/*`],
-        },
-      ],
-    });
-
+  // Los buckets son privados: el navegador accede con URLs firmadas que expiran.
+  // Se elimina cualquier política pública heredada (versiones anteriores la creaban).
+  private async ensurePrivate(bucket: string) {
     try {
-      await this.s3Client.send(
-        new PutBucketPolicyCommand({ Bucket: bucket, Policy: policy }),
-      );
-      this.logger.log(`Public read policy set on "${bucket}"`);
+      await this.storage.internal.send(new DeleteBucketPolicyCommand({ Bucket: bucket }));
+      this.logger.log(`Bucket "${bucket}" is private`);
     } catch (err: any) {
-      this.logger.warn(`Could not set public policy on "${bucket}": ${err.message}`);
+      if (err?.name !== 'NoSuchBucketPolicy') {
+        this.logger.warn(`Could not remove policy on "${bucket}": ${err.message}`);
+      }
     }
   }
 }

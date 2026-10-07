@@ -5,6 +5,7 @@ const PASSWORD_MSG = 'La contraseña debe contener al menos una mayúscula, una 
 
 export class CreateUserDto {
   @IsEmail()
+  @MaxLength(255)
   email: string;
 
   @IsString()
@@ -20,6 +21,7 @@ export class CreateUserDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   phone?: string;
 
   @IsOptional()
@@ -36,6 +38,7 @@ export class UpdateUserDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   phone?: string;
 
   @IsOptional()

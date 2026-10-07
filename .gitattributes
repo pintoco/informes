@@ -1,0 +1,4 @@
+# Scripts y configs que se ejecutan dentro de contenedores Linux: siempre LF
+*.sh text eol=lf
+Caddyfile text eol=lf
+*.conf text eol=lf

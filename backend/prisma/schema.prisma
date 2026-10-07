@@ -38,18 +38,19 @@ enum PdfStatus {
 // ─── Users ────────────────────────────────────────────────────────────────────
 
 model User {
-  id           String     @id @default(uuid())
-  cognitoSub   String?    @unique
-  email        String     @unique
-  name         String
-  phone        String?
-  passwordHash String?
-  role         Role       @default(TECHNICIAN)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-  deletedAt    DateTime?
-  deletedBy    String?
-  services     Service[]
+  id                String    @id @default(uuid())
+  cognitoSub        String?   @unique
+  email             String    @unique
+  name              String
+  phone             String?
+  passwordHash      String?
+  passwordChangedAt DateTime?
+  role              Role      @default(TECHNICIAN)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+  deletedBy         String?
+  services          Service[]
 
   @@index([deletedAt])
 }
@@ -145,9 +146,9 @@ model ServicePdf {
   errorMessage String?
 
   // Auditoría y snapshot
-  requestedBy  String?  // userId que solicitó la generación
-  generatedBy  String?  // siempre el worker ("pdf-worker")
-  dataSnapshot Json?    // snapshot del servicio al momento de generar
+  requestedBy  String? // userId que solicitó la generación
+  generatedBy  String? // siempre el worker ("pdf-worker")
+  dataSnapshot Json? // snapshot del servicio al momento de generar
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

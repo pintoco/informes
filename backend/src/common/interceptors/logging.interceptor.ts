@@ -8,7 +8,7 @@ import {
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
-const SENSITIVE_FIELDS = ['password', 'passwordHash', 'token', 'secret', 'authorization'];
+const SENSITIVE_FIELDS = ['password', 'passwordHash', 'token', 'secret', 'authorization', 'firmaUrl'];
 
 function maskSensitive(obj: Record<string, unknown>): Record<string, unknown> {
   if (!obj || typeof obj !== 'object') return obj;

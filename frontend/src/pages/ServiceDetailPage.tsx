@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { cloneService } from '@/api/services';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseServiceDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -203,7 +204,7 @@ export function ServiceDetailPage() {
                     <div>
                       <p className="text-xs text-gray-500">Fecha</p>
                       <p className="text-sm font-medium">
-                        {format(new Date(currentService.fecha), "d 'de' MMMM, yyyy", { locale: es })}
+                        {format(parseServiceDate(currentService.fecha), "d 'de' MMMM, yyyy", { locale: es })}
                       </p>
                     </div>
                   </div>

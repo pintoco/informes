@@ -9,19 +9,14 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { LocalAuthService } from './local-auth.service';
-import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from '../auth.guard';
 
+// El registro público fue eliminado: los usuarios los crea un ADMIN vía POST /users.
+// Para el primer ADMIN de una instalación nueva usar: node dist/scripts/create-admin.js
 @Controller('auth')
 export class LocalAuthController {
   constructor(private readonly localAuthService: LocalAuthService) {}
-
-  @Post('register')
-  @HttpCode(HttpStatus.CREATED)
-  register(@Body() dto: RegisterDto) {
-    return this.localAuthService.register(dto);
-  }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)

@@ -22,12 +22,29 @@ export class CompaniesService {
   }
 
   async updateCompany(id: string, dto: CreateCompanyDto) {
-    await this.findCompany(id);
-    return this.prisma.company.update({
-      where: { id },
-      data: { name: dto.name },
-      include: { locations: { orderBy: { name: 'asc' } } },
-    });
+    const company = await this.findCompany(id);
+    if (company.name === dto.name) {
+      return this.prisma.company.findUnique({
+        where: { id },
+        include: { locations: { orderBy: { name: 'asc' } } },
+      });
+    }
+
+    // Los servicios guardan el nombre de la empresa como texto (razonSocial):
+    // al renombrar se actualizan en la misma transacción para no dejarlos huérfanos.
+    // Un nombre ya usado por otra empresa lanza P2002 → 409 (PrismaExceptionFilter).
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.company.update({
+        where: { id },
+        data: { name: dto.name },
+        include: { locations: { orderBy: { name: 'asc' } } },
+      }),
+      this.prisma.service.updateMany({
+        where: { razonSocial: company.name },
+        data: { razonSocial: dto.name },
+      }),
+    ]);
+    return updated;
   }
 
   async removeCompany(id: string) {

@@ -1,0 +1,33 @@
+# Caddy obtiene y renueva el certificado HTTPS de Let's Encrypt automáticamente.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# API NestJS
+	handle /api/* {
+		request_body {
+			max_size 2MB
+		}
+		reverse_proxy backend:3001
+	}
+
+	# Frontend (SPA). Las fotos/PDFs se cargan y suben directo a S3 con URLs firmadas,
+	# por eso la CSP permite *.amazonaws.com en img-src y connect-src.
+	handle {
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.amazonaws.com {$CSP_EXTRA_SOURCES}; connect-src 'self' https://*.amazonaws.com {$CSP_EXTRA_SOURCES}; worker-src 'self' blob:; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		reverse_proxy frontend:80
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

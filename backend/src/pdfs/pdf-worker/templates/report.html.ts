@@ -46,6 +46,18 @@ const maintenanceTypeLabels: Record<string, string> = {
   OTHER: 'Otro',
 };
 
+// Todo texto ingresado por usuarios DEBE pasar por esc() antes de entrar al HTML:
+// evita romper el PDF y que se inyecte HTML/JS en Chromium.
+const esc = (value: string | null | undefined): string =>
+  (value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const SAFE_IMAGE_DATA_URL = /^data:image\/(png|jpeg);base64,[A-Za-z0-9+/]+=*$/;
+
 export function generateReportHtml(
   service: ServiceData,
   photos: PhotoData[]
@@ -53,9 +65,17 @@ export function generateReportHtml(
   const beforePhotos = photos.filter((p) => p.categoria === 'BEFORE');
   const afterPhotos = photos.filter((p) => p.categoria === 'AFTER');
 
-  const fechaFormateada = format(new Date(service.fecha), "d 'de' MMMM 'de' yyyy", {
-    locale: es,
-  });
+  // Solo se acepta la firma si es una imagen en data URL (datos antiguos podrían no serlo)
+  const firmaSegura =
+    service.firmaUrl && SAFE_IMAGE_DATA_URL.test(service.firmaUrl) ? service.firmaUrl : null;
+
+  // `fecha` es medianoche UTC del día elegido: se formatea en UTC para no correr un día
+  const fecha = new Date(service.fecha);
+  const fechaFormateada = format(
+    new Date(fecha.getUTCFullYear(), fecha.getUTCMonth(), fecha.getUTCDate()),
+    "d 'de' MMMM 'de' yyyy",
+    { locale: es },
+  );
 
   const generatedAt = new Intl.DateTimeFormat('es-CL', {
     timeZone: 'America/Santiago',
@@ -71,7 +91,7 @@ export function generateReportHtml(
     if (photoList.length === 0) return '';
     return `
       <div class="section">
-        <div class="section-title">${title}</div>
+        <div class="section-title">${esc(title)}</div>
         <div class="photos-grid">
           ${photoList
             .map(
@@ -96,7 +116,7 @@ export function generateReportHtml(
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Informe Técnico - ${service.ordenTrabajo}</title>
+  <title>Informe Técnico - ${esc(service.ordenTrabajo)}</title>
   <style>
     * {
       margin: 0;
@@ -365,7 +385,7 @@ export function generateReportHtml(
       </div>
     </div>
     <div class="header-info">
-      <div class="ot">OT: ${service.ordenTrabajo}</div>
+      <div class="ot">OT: ${esc(service.ordenTrabajo)}</div>
       <div class="fecha">${fechaFormateada}</div>
     </div>
   </div>
@@ -384,17 +404,17 @@ export function generateReportHtml(
       <table class="data-table">
         <tr>
           <td class="label">Razón Social</td>
-          <td class="value">${service.razonSocial}</td>
+          <td class="value">${esc(service.razonSocial)}</td>
           <td class="label">Orden de Trabajo</td>
-          <td class="value"><strong>${service.ordenTrabajo}</strong></td>
+          <td class="value"><strong>${esc(service.ordenTrabajo)}</strong></td>
         </tr>
         <tr>
           <td class="label">Ubicación</td>
-          <td class="value" colspan="3">${service.ubicacion}</td>
+          <td class="value" colspan="3">${esc(service.ubicacion)}</td>
         </tr>
         <tr>
           <td class="label">Contacto Terreno</td>
-          <td class="value">${service.contactoTerreno}</td>
+          <td class="value">${esc(service.contactoTerreno)}</td>
           <td class="label">Tipo de Mantención</td>
           <td class="value">
             <span class="badge badge-${service.tipoMantenimiento.toLowerCase()}">
@@ -413,19 +433,19 @@ export function generateReportHtml(
           <td class="label">Fecha</td>
           <td class="value">${fechaFormateada}</td>
           <td class="label">Hora de Inicio</td>
-          <td class="value">${service.horaInicio}</td>
+          <td class="value">${esc(service.horaInicio)}</td>
         </tr>
         <tr>
           <td class="label">Responsable</td>
-          <td class="value">${service.responsable}</td>
+          <td class="value">${esc(service.responsable)}</td>
           <td class="label">Técnico</td>
-          <td class="value">${service.nombreTecnico}</td>
+          <td class="value">${esc(service.nombreTecnico)}</td>
         </tr>
         <tr>
           <td class="label">Teléfono</td>
-          <td class="value">${service.fono}</td>
+          <td class="value">${esc(service.fono)}</td>
           <td class="label">Email</td>
-          <td class="value">${service.email}</td>
+          <td class="value">${esc(service.email)}</td>
         </tr>
       </table>
     </div>
@@ -441,7 +461,7 @@ export function generateReportHtml(
           ? `
       <div class="comment-box">
         <div class="comment-label">NVR</div>
-        ${service.comentarioNvr}
+        ${esc(service.comentarioNvr)}
       </div>`
           : ''
       }
@@ -450,7 +470,7 @@ export function generateReportHtml(
           ? `
       <div class="comment-box">
         <div class="comment-label">Cámaras</div>
-        ${service.comentarioCamaras}
+        ${esc(service.comentarioCamaras)}
       </div>`
           : ''
       }
@@ -459,7 +479,7 @@ export function generateReportHtml(
           ? `
       <div class="comment-box">
         <div class="comment-label">Observaciones Generales</div>
-        ${service.observaciones}
+        ${esc(service.observaciones)}
       </div>`
           : ''
       }
@@ -485,24 +505,24 @@ export function generateReportHtml(
           </p>
           <div class="signature-info">
             <div class="signature-line">
-              <strong>${service.responsable}</strong>
+              <strong>${esc(service.responsable)}</strong>
             </div>
             <div class="signature-label">Responsable</div>
             <div class="signature-label" style="margin-top: 4px;">
-              ${service.fono} | ${service.email}
+              ${esc(service.fono)} | ${esc(service.email)}
             </div>
           </div>
         </div>
         <div style="flex: 1;">
           <p style="font-size: 9pt; color: #475569; margin-bottom: 4px;">Firma de Recepción:</p>
           ${
-            service.firmaUrl
+            firmaSegura
               ? `<div class="signature-box">
-            <img src="${service.firmaUrl}" alt="Firma del receptor" />
+            <img src="${firmaSegura}" alt="Firma del receptor" />
           </div>
           <div class="signature-info" style="margin-top: 4px;">
             <div class="signature-line">
-              <strong>${service.firmaNombreReceptor || ''}</strong>
+              <strong>${esc(service.firmaNombreReceptor)}</strong>
             </div>
             <div class="signature-label">Receptor del Servicio</div>
           </div>`
@@ -524,7 +544,7 @@ export function generateReportHtml(
   <div class="footer">
     <div>Elemental Pro - Sistema de Gestión de Servicios Técnicos</div>
     <div>Generado el ${generatedAt}</div>
-    <div>OT: ${service.ordenTrabajo}</div>
+    <div>OT: ${esc(service.ordenTrabajo)}</div>
   </div>
 
 </body>

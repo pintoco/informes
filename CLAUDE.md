@@ -2,6 +2,9 @@
 
 Aplicación para registrar servicios técnicos de CCTV con carga de fotos y generación de PDFs.
 
+> **Rama `aws-lightsail`**: versión endurecida para migrar a AWS Lightsail + S3 (ver `deploy/lightsail/README.md`).
+> Producción sigue en Railway desde `main` hasta el corte. No hacer merge a `main` sin coordinar la migración.
+
 ## Stack actual (producción en Railway)
 
 | Capa | Tecnología |
@@ -23,7 +26,8 @@ npm run start:dev       # puerto 3001
 npm run build
 npm run lint
 npx prisma generate
-npx prisma db push      # aplica schema sin migraciones (dev/staging)
+npx prisma migrate dev --name <cambio>   # crea una migración versionada en prisma/migrations
+npx prisma migrate deploy               # aplica migraciones pendientes
 npx prisma studio       # UI para explorar la BD
 
 # Frontend
@@ -69,16 +73,16 @@ prueba/
 │   ├── src/
 │   │   ├── app.module.ts          # módulo raíz
 │   │   ├── main.ts                # bootstrap, CORS, helmet, rate-limit
-│   │   ├── auth/                  # JWT local + Cognito (deshabilitado)
+│   │   ├── auth/                  # JWT local (login; sin registro público)
 │   │   ├── users/
 │   │   ├── companies/
-│   │   ├── services/              # entidad principal (órdenes de trabajo)
-│   │   ├── photos/                # presign S3, confirm, delete
+│   │   ├── services/              # entidad principal (órdenes de trabajo) + fotos (presign/confirm/delete)
+│   │   ├── scripts/create-admin.ts # crea/promueve un ADMIN por CLI
 │   │   ├── pdfs/                  # generación con Puppeteer via BullMQ
 │   │   │   └── pdf-worker/templates/
 │   │   │       ├── report.html.ts # plantilla HTML del PDF
 │   │   │       └── logo.png       # logo Elemental (copiado a dist/ por NestJS assets)
-│   │   ├── storage/               # StorageInitService: crea buckets al arrancar
+│   │   ├── storage/               # StorageService (S3: URLs firmadas, get/put/delete) + StorageInitService
 │   │   └── prisma/
 │   ├── prisma/schema.prisma
 │   ├── nest-cli.json              # assets: { include: "**/*.png" } → copia logo a dist/
@@ -93,7 +97,8 @@ prueba/
 │   │   ├── pages/
 │   │   └── components/
 │   └── Dockerfile
-├── docker-compose.local.yml       # desarrollo local completo
+├── docker-compose.local.yml       # desarrollo local completo (SeaweedFS como S3)
+├── deploy/lightsail/              # producción en AWS Lightsail + S3 (compose, Caddy, scripts, guía)
 └── RAILWAY.md                     # guía de deploy paso a paso
 ```
 
@@ -139,21 +144,28 @@ CORS_ORIGIN=https://informes.elementalpro.cl
 
 ## Crear primer usuario admin
 
+En la rama `aws-lightsail` el registro público (`POST /auth/register`) fue eliminado. Los usuarios los crea un ADMIN desde la app (`POST /users`). Para el primer ADMIN:
+
 ```bash
-curl -X POST https://backend-production-c31d.up.railway.app/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@empresa.com","name":"Admin","password":"Password123!","role":"ADMIN"}'
+docker compose exec -e ADMIN_EMAIL=admin@empresa.com -e ADMIN_NAME="Admin" \
+  -e ADMIN_PASSWORD='Password123' backend node dist/scripts/create-admin.js
 ```
 
 ## Gotchas conocidos
 
-- **`prisma db push` en vez de `migrate deploy`**: el repo no tiene archivos de migración SQL (solo `.gitkeep`). Se usa `db push --accept-data-loss` en el CMD del Dockerfile y en `railway.toml`.
-- **Buckets MinIO auto-creados**: `StorageInitService` los crea al arrancar via `OnModuleInit`. No hace falta crearlos manualmente.
+- **Migraciones versionadas**: `backend/docker-entrypoint.sh` corre `prisma migrate deploy`. Si la BD ya tiene tablas sin historial (creada con el antiguo `db push` o restaurada desde Railway), marca `0_init` como aplicada (baseline) y sigue. Nunca volver a `db push --accept-data-loss`.
+- **Buckets privados + URLs firmadas**: fotos y PDFs NO son públicos. `ServicesService.withSignedUrls` reemplaza `url` por una URL firmada temporal (`SIGNED_URL_TTL_SECONDS`, 2 h por defecto) en cada respuesta; la columna `url` en BD es solo referencia. Todo acceso a S3 pasa por `StorageService`.
+- **Creación de buckets**: con `S3_INIT_BUCKETS` distinto de `false`, `StorageInitService` los crea y elimina cualquier política pública. En AWS (`false`) los crea `deploy/lightsail/scripts/create-aws-resources.sh`.
+- **MinIO ya no publica imágenes Docker**: el desarrollo local usa SeaweedFS (`docker-compose.local.yml`) y Lightsail usa Amazon S3.
+- **Plantilla PDF**: todo texto de usuario pasa por `esc()` en `report.html.ts`. Chromium corre sin JavaScript y con las peticiones de red bloqueadas. `firmaUrl` debe ser `data:image/png|jpeg;base64,...`.
+- **Permisos**: eliminar servicios es solo para ADMIN. Cambiar la contraseña de un usuario invalida sus tokens (`passwordChangedAt`).
+- **`trust proxy`**: `TRUST_PROXY` (default 1) permite que el rate limit vea la IP real detrás de Caddy/Railway.
 - **`VITE_API_URL` bakeado en build**: si cambia el dominio del backend, hay que redesplegar el frontend con la nueva variable.
-- **CORS solo acepta un origen**: `CORS_ORIGIN` es un string único. Si hay que aceptar varios dominios, modificar `main.ts` para parsear lista separada por coma.
+- **CORS**: `CORS_ORIGIN` acepta varios orígenes separados por coma.
 - **MinIO en Railway requiere `PORT=9000`**: Railway necesita saber en qué puerto escucha el contenedor.
-- **Rate limit**: 100 req / 15 min por IP. Ajustar en `main.ts` si es necesario.
+- **Rate limit**: `RATE_LIMIT_MAX` req / 15 min por IP (default 300); login: 10 intentos fallidos / 15 min.
 - **Logo en PDF**: el archivo `logo.png` debe estar en `backend/src/pdfs/pdf-worker/templates/`. NestJS lo copia a `dist/` gracias a la config `assets` en `nest-cli.json`. La plantilla lo lee con `fs.readFileSync(path.join(__dirname, 'logo.png'))` al cargar el módulo. No usar base64 inline en el source TypeScript — Puppeteer falla silenciosamente con strings muy largos.
 - **Zona horaria del PDF**: el servidor corre en UTC. Se usa `Intl.DateTimeFormat` con `timeZone: 'America/Santiago'` para mostrar hora chilena correcta (maneja DST automáticamente).
+- **`fecha` del servicio**: se guarda como medianoche UTC del día elegido. Mostrarla con `parseServiceDate()` (frontend) o con métodos `getUTC*` (backend); `new Date(fecha)` en el navegador muestra el día anterior.
 - **Campos opcionales en actualización**: al borrar un comentario (NVR, Cámaras, Observaciones) y guardar, el frontend envía `""` en edición. El backend lo convierte a `null` con `dto.campo || null` para limpiar el valor en BD. No omitir el campo (undefined) porque el servicio usa `!== undefined` para decidir qué actualizar.
 - **`nombreTecnico` vacío en nuevo servicio**: el formulario de nuevo servicio solo auto-rellena `responsable`, `fono` y `email` desde el usuario logueado. `nombreTecnico` queda vacío para que el técnico lo ingrese manualmente.

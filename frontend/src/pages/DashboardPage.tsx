@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { parseServiceDate } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +19,7 @@ import {
 import { ServiceFilters } from '@/components/ServiceFilters';
 import { Layout } from '@/components/Layout';
 import { useServices } from '@/hooks/useServices';
+import { useAuthStore } from '@/store/authStore';
 import { getStats, exportServicesCsv, bulkDownloadPdfs } from '@/api/services';
 import { Service, ServiceFilters as IServiceFilters, PdfStatus, StatsResponse } from '@/types';
 
@@ -62,6 +64,8 @@ export function DashboardPage() {
   const { services, loading, fetchServices, remove } = useServices();
   const [filters, setFilters] = useState<IServiceFilters>({ page: 1, limit: 20 });
   const [activeFilters, setActiveFilters] = useState<IServiceFilters>({});
+  // Solo ADMIN puede eliminar servicios (el backend también lo exige)
+  const isAdmin = useAuthStore((state) => state.user?.role === 'ADMIN');
   const [deleteTarget, setDeleteTarget] = useState<Service | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [stats, setStats] = useState<StatsResponse | null>(null);
@@ -264,7 +268,7 @@ export function DashboardPage() {
                           <TableCell>{service.razonSocial}</TableCell>
                           <TableCell className="text-gray-600">{service.ubicacion}</TableCell>
                           <TableCell className="text-gray-600">
-                            {format(new Date(service.fecha), 'dd/MM/yyyy', { locale: es })}
+                            {format(parseServiceDate(service.fecha), 'dd/MM/yyyy', { locale: es })}
                           </TableCell>
                           <TableCell className="text-gray-600">{service.nombreTecnico}</TableCell>
                           <TableCell>
@@ -305,14 +309,16 @@ export function DashboardPage() {
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button
-                                variant="ghost" size="icon"
-                                className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                                onClick={() => setDeleteTarget(service)}
-                                title="Eliminar"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                              {isAdmin && (
+                                <Button
+                                  variant="ghost" size="icon"
+                                  className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => setDeleteTarget(service)}
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>

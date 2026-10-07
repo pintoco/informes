@@ -4,6 +4,14 @@ Aplicación para registrar servicios técnicos de CCTV con carga de fotos y gene
 
 > **Rama `aws-lightsail`**: versión endurecida para migrar a AWS Lightsail + S3 (ver `deploy/lightsail/README.md`).
 > Producción sigue en Railway desde `main` hasta el corte. No hacer merge a `main` sin coordinar la migración.
+>
+> **Desplegado en AWS (cuenta 839911707830, `sa-east-1`)**, en paralelo a Railway:
+> - Lightsail `elemental-pro` (2 GB, Ubuntu 24.04), IP estática `54.232.144.217`, snapshots diarios 07:00 UTC
+> - URL de prueba: `https://54-232-144-217.sslip.io` (hasta cambiar el DNS de `informes.elementalpro.cl`)
+> - S3: `elementalpro-informes-photos` / `elementalpro-informes-pdfs` (privados, versionados, CORS para ambos dominios)
+> - IAM `elemental-pro-app`: solo lectura/escritura en esos buckets
+> - Código en el servidor: `~/elemental` (rama `aws-lightsail`), config en `~/elemental/deploy/lightsail/.env`
+> - Postgres 18 (igual que Railway). Para actualizar: `git pull && docker compose up -d --build`
 
 ## Stack actual (producción en Railway)
 

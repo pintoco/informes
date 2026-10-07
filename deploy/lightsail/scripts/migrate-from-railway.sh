@@ -48,7 +48,7 @@ if docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc 'SELECT 1 FRO
 fi
 
 echo "==> 2/6 Exportando base de datos de Railway"
-docker run --rm -v "$PWD/backups:/backups" postgres:17-alpine \
+docker run --rm -v "$PWD/backups:/backups" postgres:18-alpine \
   pg_dump "$RAILWAY_DATABASE_URL" -Fc --no-owner --no-acl -f "/backups/railway-$TS.dump"
 ls -lh "backups/railway-$TS.dump"
 
@@ -101,7 +101,7 @@ docker compose logs --tail 20 backend
 echo "==> 6/6 Verificación de registros"
 count() {
   local railway lightsail
-  railway=$(docker run --rm postgres:17-alpine psql "$RAILWAY_DATABASE_URL" -tAc "SELECT count(*) FROM \"$1\"")
+  railway=$(docker run --rm postgres:18-alpine psql "$RAILWAY_DATABASE_URL" -tAc "SELECT count(*) FROM \"$1\"")
   lightsail=$(docker compose exec -T db psql -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT count(*) FROM \"$1\"")
   printf '  %-14s Railway: %-6s Lightsail: %-6s %s\n' "$1" "$railway" "$lightsail" \
     "$([ "$railway" = "$lightsail" ] && echo OK || echo '⚠️ DIFERENTE')"

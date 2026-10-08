@@ -16,6 +16,9 @@ export function CreateServicePage() {
   const navigate = useNavigate();
   const { create, loading } = useServices();
   const [createdServiceId, setCreatedServiceId] = useState<string | null>(null);
+  const [hasSignature, setHasSignature] = useState(false);
+  // Última modificación (fotos o firma) para saber si el PDF quedó desactualizado
+  const [lastChangeAt, setLastChangeAt] = useState<number | null>(null);
   const {
     photos,
     uploading,
@@ -37,6 +40,8 @@ export function CreateServicePage() {
     if (!createdServiceId) return;
     try {
       await updateService(createdServiceId, { firmaUrl: dataUrl, firmaNombreReceptor: nombreReceptor });
+      setHasSignature(true);
+      setLastChangeAt(Date.now());
     } catch (err) {
       console.error('Error saving signature:', err);
     }
@@ -44,10 +49,12 @@ export function CreateServicePage() {
 
   const handleUpload = async (files: File[], categoria: PhotoCategory) => {
     await uploadMultiple(files, categoria);
+    setLastChangeAt(Date.now());
   };
 
   const handleDelete = async (photoId: string) => {
     await removePhoto(photoId);
+    setLastChangeAt(Date.now());
   };
 
   const handleFinish = () => {
@@ -97,7 +104,11 @@ export function CreateServicePage() {
             <SignatureCanvas onSave={handleSignatureSave} />
 
             {/* Step 4: PDF */}
-            <PdfStatus serviceId={createdServiceId} />
+            <PdfStatus
+              serviceId={createdServiceId}
+              checks={{ hasSignature, hasAfterPhotos: photos.some((p) => p.categoria === 'AFTER') }}
+              contentUpdatedAt={lastChangeAt}
+            />
 
             {/* Finish button */}
             <div className="flex justify-end gap-3">

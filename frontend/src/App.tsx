@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from '@/store/authStore';
@@ -9,9 +9,17 @@ import { EditServicePage } from '@/pages/EditServicePage';
 import { ServiceDetailPage } from '@/pages/ServiceDetailPage';
 import { UsersPage } from '@/pages/UsersPage';
 import { CompaniesPage } from '@/pages/CompaniesPage';
+import { ProfilePage } from '@/pages/ProfilePage';
+import { TextTemplatesPage } from '@/pages/TextTemplatesPage';
 
 function ProtectedRoute() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, refreshUser } = useAuthStore();
+
+  // Perfil actualizado al abrir la app (teléfono, rol, etc.)
+  useEffect(() => {
+    if (isAuthenticated) refreshUser();
+  }, [isAuthenticated, refreshUser]);
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
@@ -65,6 +73,8 @@ export default function App() {
           <Route path="/services/:id/edit" element={<EditServicePage />} />
           <Route path="/users" element={<UsersPage />} />
           <Route path="/companies" element={<CompaniesPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/text-templates" element={<TextTemplatesPage />} />
         </Route>
 
         {/* Fallback */}

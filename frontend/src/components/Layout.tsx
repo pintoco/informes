@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LogOut, LayoutDashboard, Plus, User, Users, Building2 } from 'lucide-react';
+import { LogOut, LayoutDashboard, Plus, User, Users, Building2, FileText } from 'lucide-react';
 import logo from '@/assets/logo.png';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
@@ -19,6 +19,7 @@ export function Layout({ children }: LayoutProps) {
     { href: '/services/new', label: 'Nuevo Servicio', icon: Plus },
     ...(user?.role === 'ADMIN' ? [
       { href: '/companies', label: 'Empresas', icon: Building2 },
+      { href: '/text-templates', label: 'Textos', icon: FileText },
       { href: '/users', label: 'Usuarios', icon: Users },
     ] : []),
   ];
@@ -61,11 +62,18 @@ export function Layout({ children }: LayoutProps) {
             {/* Right side */}
             <div className="flex items-center space-x-4">
               {user && (
-                <div className="flex items-center space-x-2 text-sm text-gray-700">
+                <Link
+                  to="/profile"
+                  title="Mi perfil"
+                  className={`flex items-center space-x-2 text-sm rounded-md px-2 py-1 transition-colors ${
+                    location.pathname === '/profile'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
                   <User className="h-4 w-4" />
                   <span className="hidden md:block">{user.name || user.email}</span>
-                  <span className="text-xs text-gray-400">({user.role})</span>
-                </div>
+                </Link>
               )}
               <Button
                 variant="ghost"
@@ -81,7 +89,7 @@ export function Layout({ children }: LayoutProps) {
         </div>
 
         {/* Mobile nav */}
-        <div className="md:hidden border-t border-gray-100 px-4 py-2 flex space-x-2">
+        <div className="md:hidden border-t border-gray-100 px-4 py-2 flex space-x-2 overflow-x-auto">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = location.pathname === item.href;

@@ -19,10 +19,6 @@ export class FilterServicesDto {
   @IsOptional()
   search?: string;
 
-  @IsString()
-  @IsOptional()
-  nombreTecnico?: string;
-
   @IsEnum(MaintenanceType)
   @IsOptional()
   tipoMantenimiento?: MaintenanceType;

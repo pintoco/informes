@@ -17,6 +17,11 @@ import { ConfirmPhotoDto, MAX_FILE_SIZE_BYTES } from './dto/photo.dto';
 const MAX_PHOTOS_PER_SERVICE = 30;
 const APP_TIME_ZONE = 'America/Santiago';
 
+// Panel: servicios recientes a revisar y puntos con fallas recurrentes
+const ATTENTION_WINDOW_DAYS = 60;
+const RECURRING_WINDOW_DAYS = 90;
+const RECURRING_MIN_CORRECTIVES = 3;
+
 const EXTENSION_BY_MIME: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -86,7 +91,25 @@ export class ServicesService {
     return `${year}-${nextNum.toString().padStart(3, '0')}`;
   }
 
-  async create(dto: CreateServiceDto, userId?: string) {
+  /**
+   * Datos del responsable para un servicio nuevo: siempre los del usuario conectado
+   * (perfil en BD), no los que envíe el formulario.
+   */
+  private async responsableFromProfile(userId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { name: true, phone: true, email: true, contactEmail: true },
+    });
+    if (!user) throw new BadRequestException('Usuario no encontrado');
+    return {
+      responsable: user.name,
+      fono: user.phone ?? '',
+      email: user.contactEmail || user.email,
+    };
+  }
+
+  async create(dto: CreateServiceDto, userId: string) {
+    const responsable = await this.responsableFromProfile(userId);
     const service = await this.prisma.$transaction(async (tx) => {
       const ordenTrabajo = await this.nextOrdenTrabajo(tx);
       this.logger.log(`Creando servicio OT=${ordenTrabajo} por usuario=${userId}`);
@@ -99,10 +122,7 @@ export class ServicesService {
           contactoTerreno: dto.contactoTerreno,
           fecha: new Date(dto.fecha),
           horaInicio: dto.horaInicio,
-          responsable: dto.responsable,
-          nombreTecnico: dto.nombreTecnico,
-          fono: dto.fono,
-          email: dto.email,
+          ...responsable,
           tipoMantenimiento: dto.tipoMantenimiento,
           comentarioNvr: dto.comentarioNvr,
           comentarioCamaras: dto.comentarioCamaras,
@@ -118,11 +138,10 @@ export class ServicesService {
   }
 
   private buildWhere(filters: FilterServicesDto): Prisma.ServiceWhereInput {
-    const { ubicacion, fechaDesde, fechaHasta, search, nombreTecnico, tipoMantenimiento } = filters;
+    const { ubicacion, fechaDesde, fechaHasta, search, tipoMantenimiento } = filters;
     const where: Prisma.ServiceWhereInput = { deletedAt: null };
 
     if (ubicacion) where.ubicacion = { contains: ubicacion, mode: 'insensitive' };
-    if (nombreTecnico) where.nombreTecnico = { contains: nombreTecnico, mode: 'insensitive' };
     if (tipoMantenimiento) where.tipoMantenimiento = tipoMantenimiento;
     // `fecha` se guarda como medianoche UTC del día elegido (YYYY-MM-DD), así que
     // los límites se calculan en UTC sin importar la zona horaria del servidor.
@@ -139,7 +158,8 @@ export class ServicesService {
       where.OR = [
         { razonSocial: { contains: search, mode: 'insensitive' } },
         { ordenTrabajo: { contains: search, mode: 'insensitive' } },
-        { nombreTecnico: { contains: search, mode: 'insensitive' } },
+        { ubicacion: { contains: search, mode: 'insensitive' } },
+        { responsable: { contains: search, mode: 'insensitive' } },
       ];
     }
     return where;
@@ -180,46 +200,103 @@ export class ServicesService {
     return new Date(Date.UTC(year, month - 1, 1));
   }
 
+  /** Hoy (fecha de Chile) menos `days` días, como medianoche UTC igual que `fecha`. */
+  private daysAgo(days: number): Date {
+    const today = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE }).format(new Date()));
+    return new Date(today.getTime() - days * 86_400_000);
+  }
+
   async getStats() {
     const startOfMonth = this.startOfCurrentMonth();
     const where = { deletedAt: null };
+    const attentionSince = this.daysAgo(ATTENTION_WINDOW_DAYS);
+    const recurringSince = this.daysAgo(RECURRING_WINDOW_DAYS);
 
-    const [total, thisMonth, withSignature, byMaintenance, topTechnicians] = await Promise.all([
+    const [total, thisMonth, thisMonthByClient, recent, correctives] = await Promise.all([
       this.prisma.service.count({ where }),
       this.prisma.service.count({ where: { ...where, fecha: { gte: startOfMonth } } }),
-      this.prisma.service.count({ where: { ...where, firmaUrl: { not: null } } }),
       this.prisma.service.groupBy({
-        by: ['tipoMantenimiento'],
-        where,
-        _count: { id: true },
-      }),
-      this.prisma.service.groupBy({
-        by: ['nombreTecnico'],
-        where,
+        by: ['razonSocial'],
+        where: { ...where, fecha: { gte: startOfMonth } },
         _count: { id: true },
         orderBy: { _count: { id: 'desc' } },
-        take: 5,
+      }),
+      // Servicios recientes con lo necesario para detectar informes incompletos
+      this.prisma.service.findMany({
+        where: { ...where, fecha: { gte: attentionSince } },
+        orderBy: { fecha: 'desc' },
+        select: {
+          id: true, ordenTrabajo: true, razonSocial: true, ubicacion: true, fecha: true,
+          updatedAt: true, firmaUrl: true,
+          photos: { select: { categoria: true } },
+          pdfs: { select: { status: true, createdAt: true }, orderBy: { version: 'desc' }, take: 1 },
+        },
+      }),
+      this.prisma.service.groupBy({
+        by: ['razonSocial', 'ubicacion'],
+        where: { ...where, tipoMantenimiento: 'CORRECTIVE', fecha: { gte: recurringSince } },
+        _count: { id: true },
+        _max: { fecha: true },
+        having: { id: { _count: { gte: RECURRING_MIN_CORRECTIVES } } },
+        orderBy: { _count: { id: 'desc' } },
       }),
     ]);
+
+    const counts = { sinFirma: 0, sinFotosDespues: 0, sinPdf: 0, pdfDesactualizado: 0 };
+    const attentionItems = recent
+      .map((s) => {
+        const issues: string[] = [];
+        if (!s.firmaUrl) { issues.push('Sin firma'); counts.sinFirma++; }
+        if (!s.photos.some((p) => p.categoria === 'AFTER')) {
+          issues.push('Sin fotos "después"'); counts.sinFotosDespues++;
+        }
+        const pdf = s.pdfs[0];
+        if (!pdf || pdf.status === 'ERROR') {
+          issues.push('Sin PDF'); counts.sinPdf++;
+        } else if (pdf.status === 'READY' && pdf.createdAt < s.updatedAt) {
+          issues.push('PDF desactualizado'); counts.pdfDesactualizado++;
+        }
+        return {
+          id: s.id, ordenTrabajo: s.ordenTrabajo, razonSocial: s.razonSocial,
+          ubicacion: s.ubicacion, fecha: s.fecha, issues,
+        };
+      })
+      .filter((s) => s.issues.length > 0);
 
     return {
       total,
       thisMonth,
-      withSignature,
-      withoutSignature: total - withSignature,
-      byMaintenance: Object.fromEntries(
-        byMaintenance.map((b) => [b.tipoMantenimiento, b._count.id]),
-      ),
-      topTechnicians: topTechnicians.map((t) => ({ name: t.nombreTecnico, count: t._count.id })),
+      thisMonthByClient: thisMonthByClient.map((c) => ({ razonSocial: c.razonSocial, count: c._count.id })),
+      attention: {
+        windowDays: ATTENTION_WINDOW_DAYS,
+        ...counts,
+        items: attentionItems.slice(0, 20),
+        totalItems: attentionItems.length,
+      },
+      recurringPoints: {
+        windowDays: RECURRING_WINDOW_DAYS,
+        items: correctives.map((p) => ({
+          razonSocial: p.razonSocial,
+          ubicacion: p.ubicacion,
+          correctivos: p._count.id,
+          ultima: p._max.fecha,
+        })),
+      },
     };
   }
 
-  async clone(id: string, userId?: string) {
+  /**
+   * "Nueva visita a este punto": crea un servicio para el mismo cliente, ubicación y
+   * contacto, con fecha de hoy y el usuario conectado como responsable.
+   * No copia comentarios, fotos ni firma (corresponden a la visita anterior).
+   */
+  async clone(id: string, userId: string) {
     const original = await this.findServiceOrThrow(id);
+    const responsable = await this.responsableFromProfile(userId);
 
     const service = await this.prisma.$transaction(async (tx) => {
       const ordenTrabajo = await this.nextOrdenTrabajo(tx);
-      this.logger.log(`Clonando servicio id=${id} → OT=${ordenTrabajo} por usuario=${userId}`);
+      this.logger.log(`Nueva visita al punto de id=${id} → OT=${ordenTrabajo} por usuario=${userId}`);
 
       return tx.service.create({
         data: {
@@ -231,15 +308,11 @@ export class ServicesService {
           fecha: new Date(
             new Intl.DateTimeFormat('en-CA', { timeZone: APP_TIME_ZONE }).format(new Date()),
           ),
-          horaInicio: original.horaInicio,
-          responsable: original.responsable,
-          nombreTecnico: original.nombreTecnico,
-          fono: original.fono,
-          email: original.email,
+          horaInicio: new Intl.DateTimeFormat('es-CL', {
+            timeZone: APP_TIME_ZONE, hour: '2-digit', minute: '2-digit', hour12: false,
+          }).format(new Date()),
+          ...responsable,
           tipoMantenimiento: original.tipoMantenimiento,
-          comentarioNvr: original.comentarioNvr,
-          comentarioCamaras: original.comentarioCamaras,
-          observaciones: original.observaciones,
           createdBy: userId,
         },
         include: { photos: true, pdfs: true },
@@ -420,17 +493,20 @@ export class ServicesService {
       throw new BadRequestException('Archivo inválido o demasiado grande');
     }
 
-    const photo = await this.prisma.servicePhoto.create({
-      data: {
-        serviceId,
-        categoria: data.categoria,
-        s3Key: data.key,
-        url: this.storage.buildObjectUrl(this.storage.photosBucket, data.key),
-        originalName: data.originalName,
-        sizeBytes,
-        orden: data.orden,
-      },
-    });
+    const [photo] = await this.prisma.$transaction([
+      this.prisma.servicePhoto.create({
+        data: {
+          serviceId,
+          categoria: data.categoria,
+          s3Key: data.key,
+          url: this.storage.buildObjectUrl(this.storage.photosBucket, data.key),
+          originalName: data.originalName,
+          sizeBytes,
+          orden: data.orden,
+        },
+      }),
+      this.touchService(serviceId),
+    ]);
     return this.signPhoto(photo);
   }
 
@@ -446,8 +522,16 @@ export class ServicesService {
       this.logger.warn(`S3 delete failed for ${photo.s3Key}`, err);
     }
 
-    await this.prisma.servicePhoto.delete({ where: { id: photoId } });
+    await this.prisma.$transaction([
+      this.prisma.servicePhoto.delete({ where: { id: photoId } }),
+      this.touchService(serviceId),
+    ]);
     return { success: true };
+  }
+
+  /** Actualiza updatedAt del servicio: un PDF anterior a esa fecha queda desactualizado. */
+  private touchService(serviceId: string) {
+    return this.prisma.service.update({ where: { id: serviceId }, data: { updatedAt: new Date() } });
   }
 
   // ── PDFs ─────────────────────────────────────────────────────────────────────

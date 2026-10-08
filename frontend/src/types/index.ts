@@ -7,10 +7,26 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  phone?: string;
+  phone?: string | null;
+  // Email que aparece en los informes (si es distinto del email de acceso)
+  contactEmail?: string | null;
   role: UserRole;
-  cognitoSub?: string;
   createdAt?: string;
+}
+
+export interface UpdateProfileDto {
+  name?: string;
+  phone?: string;
+  contactEmail?: string;
+  currentPassword?: string;
+  newPassword?: string;
+}
+
+export interface TextTemplate {
+  id: string;
+  title: string;
+  body: string;
+  orden: number;
 }
 
 export interface Company {
@@ -36,7 +52,8 @@ export interface Service {
   fecha: string;
   horaInicio: string;
   responsable: string;
-  nombreTecnico: string;
+  // Histórico: los servicios nuevos no tienen técnico (el responsable es el usuario)
+  nombreTecnico: string | null;
   fono: string;
   email: string;
   tipoMantenimiento: MaintenanceType;
@@ -86,19 +103,44 @@ export interface ServiceFilters {
   fechaDesde?: string;
   fechaHasta?: string;
   search?: string;
-  nombreTecnico?: string;
   tipoMantenimiento?: MaintenanceType;
   page?: number;
   limit?: number;
 }
 
+export interface AttentionItem {
+  id: string;
+  ordenTrabajo: string;
+  razonSocial: string;
+  ubicacion: string;
+  fecha: string;
+  issues: string[];
+}
+
+export interface RecurringPoint {
+  razonSocial: string;
+  ubicacion: string;
+  correctivos: number;
+  ultima: string;
+}
+
 export interface StatsResponse {
   total: number;
   thisMonth: number;
-  withSignature: number;
-  withoutSignature: number;
-  byMaintenance: Partial<Record<MaintenanceType, number>>;
-  topTechnicians: Array<{ name: string; count: number }>;
+  thisMonthByClient: Array<{ razonSocial: string; count: number }>;
+  attention: {
+    windowDays: number;
+    sinFirma: number;
+    sinFotosDespues: number;
+    sinPdf: number;
+    pdfDesactualizado: number;
+    totalItems: number;
+    items: AttentionItem[];
+  };
+  recurringPoints: {
+    windowDays: number;
+    items: RecurringPoint[];
+  };
 }
 
 export interface CreateServiceDto {
@@ -108,10 +150,7 @@ export interface CreateServiceDto {
   ordenTrabajo?: string;
   fecha: string;
   horaInicio: string;
-  responsable: string;
-  nombreTecnico: string;
-  fono: string;
-  email: string;
+  // responsable, fono y email los completa el backend con el perfil del usuario
   tipoMantenimiento: MaintenanceType;
   comentarioNvr?: string;
   comentarioCamaras?: string;

@@ -8,6 +8,7 @@ import { CompaniesModule } from './companies/companies.module';
 import { ServicesModule } from './services/services.module';
 import { PdfsModule } from './pdfs/pdfs.module';
 import { StorageModule } from './storage/storage.module';
+import { TextTemplatesModule } from './text-templates/text-templates.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { StorageModule } from './storage/storage.module';
     ServicesModule,
     PdfsModule,
     StorageModule,
+    TextTemplatesModule,
   ],
 })
 export class AppModule {}

@@ -1,13 +1,21 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Eye, FileText, RefreshCw, AlertCircle } from 'lucide-react';
+import { Eye, FileText, RefreshCw, AlertCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
 import { requestPdf, getPdfStatus, downloadPdf } from '@/api/pdfs';
 import { ServicePdf, PdfStatus as IPdfStatus } from '@/types';
 
 interface PdfStatusProps {
   serviceId: string;
   existingPdfs?: ServicePdf[];
+  // Para avisar antes de generar un informe incompleto
+  checks?: { hasSignature: boolean; hasAfterPhotos: boolean };
+  // Última modificación del servicio (datos, fotos o firma): si es posterior al
+  // último PDF, ese PDF está desactualizado
+  contentUpdatedAt?: string | number | null;
 }
 
 const statusConfig: Record<
@@ -23,14 +31,24 @@ const statusConfig: Record<
 // 60 intentos × 5s = 5 minutos máximo de polling
 const MAX_POLL_ATTEMPTS = 60;
 
-export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
+export function PdfStatus({ serviceId, existingPdfs = [], checks, contentUpdatedAt }: PdfStatusProps) {
   const [pdfs, setPdfs] = useState<ServicePdf[]>(existingPdfs);
+  const [missingWarning, setMissingWarning] = useState<string[] | null>(null);
+
+  // existingPdfs llega después de cargar el servicio (página de edición/detalle)
+  useEffect(() => {
+    if (existingPdfs.length > 0) setPdfs(existingPdfs);
+  }, [existingPdfs]);
   const [requesting, setRequesting] = useState(false);
   const [pollingId, setPollingId] = useState<string | null>(null);
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const pollAttemptsRef = useRef(0);
 
   const latestPdf = pdfs.length > 0 ? pdfs[pdfs.length - 1] : null;
+  const isStale =
+    latestPdf?.status === 'READY' &&
+    !!contentUpdatedAt &&
+    new Date(contentUpdatedAt).getTime() > new Date(latestPdf.createdAt).getTime();
 
   const notifyPdfReady = useCallback((version: number) => {
     if ('Notification' in window && Notification.permission === 'granted') {
@@ -87,7 +105,20 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
     }
   }, [latestPdf]);
 
+  // Antes de generar: avisar si al informe le falta la firma o las fotos "después"
+  const handleGenerateClick = () => {
+    const missing: string[] = [];
+    if (checks && !checks.hasSignature) missing.push('la firma del receptor');
+    if (checks && !checks.hasAfterPhotos) missing.push('fotos "después del servicio"');
+    if (missing.length > 0) {
+      setMissingWarning(missing);
+      return;
+    }
+    handleRequestPdf();
+  };
+
   const handleRequestPdf = async () => {
+    setMissingWarning(null);
     setRequesting(true);
     setPollTimedOut(false);
     if ('Notification' in window && Notification.permission === 'default') {
@@ -137,7 +168,11 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
                         />
                         {config.label}
                       </Badge>
-                      <span className="text-sm text-gray-500">Versión {latestPdf.version}</span>
+                      <span className="text-sm text-gray-500">
+                        {new Date(latestPdf.createdAt).toLocaleString('es-CL', {
+                          day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+                        })}
+                      </span>
                     </>
                   );
                 })()}
@@ -153,6 +188,12 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
               {latestPdf.status === 'ERROR' && latestPdf.errorMessage && (
                 <p className="text-xs text-red-500">{latestPdf.errorMessage}</p>
               )}
+              {isStale && (
+                <p className="flex items-center gap-1 text-xs text-orange-600">
+                  <AlertTriangle className="h-3 w-3" />
+                  El servicio cambió después de generar este PDF. Regenéralo para incluir los cambios.
+                </p>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -164,8 +205,8 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
               )}
               <Button
                 size="sm"
-                variant="outline"
-                onClick={handleRequestPdf}
+                variant={isStale ? 'default' : 'outline'}
+                onClick={handleGenerateClick}
                 disabled={
                   requesting ||
                   (!pollTimedOut &&
@@ -178,42 +219,34 @@ export function PdfStatus({ serviceId, existingPdfs = [] }: PdfStatusProps) {
             </div>
           </div>
 
-          {/* History */}
-          {pdfs.length > 1 && (
-            <details className="text-sm">
-              <summary className="text-gray-500 cursor-pointer hover:text-gray-700">
-                Ver historial ({pdfs.length} versiones)
-              </summary>
-              <div className="mt-2 space-y-1 pl-4">
-                {[...pdfs].reverse().map((pdf) => {
-                  const config = statusConfig[pdf.status];
-                  return (
-                    <div key={pdf.id} className="flex items-center gap-2 text-xs text-gray-500">
-                      <Badge variant={config.variant} className="text-xs">{config.label}</Badge>
-                      <span>v{pdf.version}</span>
-                      <span>{new Date(pdf.createdAt).toLocaleString('es-CL')}</span>
-                      {pdf.status === 'READY' && pdf.url && (
-                        <button onClick={() => downloadPdf(pdf.url!)} className="text-blue-600 hover:underline">
-                          Ver PDF
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </details>
-          )}
         </div>
       ) : (
         <div className="text-center py-6 space-y-3">
           <FileText className="mx-auto h-10 w-10 text-gray-300" />
           <p className="text-sm text-gray-500">No se ha generado ningún informe PDF para este servicio.</p>
-          <Button onClick={handleRequestPdf} disabled={requesting}>
+          <Button onClick={handleGenerateClick} disabled={requesting}>
             <FileText className="h-4 w-4 mr-2" />
             {requesting ? 'Solicitando...' : 'Generar Informe PDF'}
           </Button>
         </div>
       )}
+
+      <Dialog open={!!missingWarning} onOpenChange={() => setMissingWarning(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Al informe le falta información</DialogTitle>
+            <DialogDescription>
+              Este servicio no tiene {missingWarning?.join(' ni ')}. ¿Generar el PDF de todas formas?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMissingWarning(null)}>
+              Volver y completar
+            </Button>
+            <Button onClick={handleRequestPdf}>Generar igual</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

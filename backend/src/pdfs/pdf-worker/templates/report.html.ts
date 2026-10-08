@@ -20,7 +20,7 @@ interface ServiceData {
   fecha: Date;
   horaInicio: string;
   responsable: string;
-  nombreTecnico: string;
+  nombreTecnico?: string | null;
   fono: string;
   email: string;
   tipoMantenimiento: string;
@@ -437,9 +437,14 @@ export function generateReportHtml(
         </tr>
         <tr>
           <td class="label">Responsable</td>
-          <td class="value">${esc(service.responsable)}</td>
+          ${
+            // Servicios antiguos tienen técnico; los nuevos solo responsable
+            service.nombreTecnico
+              ? `<td class="value">${esc(service.responsable)}</td>
           <td class="label">Técnico</td>
-          <td class="value">${esc(service.nombreTecnico)}</td>
+          <td class="value">${esc(service.nombreTecnico)}</td>`
+              : `<td class="value" colspan="3">${esc(service.responsable)}</td>`
+          }
         </tr>
         <tr>
           <td class="label">Teléfono</td>

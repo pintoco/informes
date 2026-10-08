@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Edit, MapPin, Phone, Mail, Calendar, Clock, User, PenSquare, X } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { cloneService } from '@/api/services';
+import { newVisitFromService } from '@/api/services';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { parseServiceDate } from '@/lib/utils';
@@ -101,15 +101,17 @@ export function ServiceDetailPage() {
   const [cloning, setCloning] = useState(false);
   const [lightbox, setLightbox] = useState<LightboxState | null>(null);
 
-  const handleClone = async () => {
+  // Crea un servicio nuevo para el mismo cliente y ubicación, y abre su edición
+  // para completar comentarios, fotos y firma de la nueva visita.
+  const handleNewVisit = async () => {
     if (!id) return;
     setCloning(true);
     try {
-      const cloned = await cloneService(id);
-      toast.success(`Servicio clonado: ${cloned.ordenTrabajo}`);
-      navigate(`/services/${cloned.id}`);
+      const visit = await newVisitFromService(id);
+      toast.success(`Nueva visita creada: ${visit.ordenTrabajo}`);
+      navigate(`/services/${visit.id}/edit`);
     } catch {
-      toast.error('Error al clonar el servicio');
+      toast.error('Error al crear la nueva visita');
     } finally {
       setCloning(false);
     }
@@ -165,9 +167,14 @@ export function ServiceDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={handleClone} disabled={cloning}>
+            <Button
+              variant="outline"
+              onClick={handleNewVisit}
+              disabled={cloning}
+              title="Crea un servicio para el mismo cliente y ubicación, con fecha de hoy"
+            >
               <PenSquare className="h-4 w-4 mr-2" />
-              {cloning ? 'Clonando...' : 'Clonar'}
+              {cloning ? 'Creando...' : 'Nueva visita a este punto'}
             </Button>
             <Button onClick={() => navigate(`/services/${id}/edit`)}>
               <Edit className="h-4 w-4 mr-2" />
@@ -231,7 +238,7 @@ export function ServiceDetailPage() {
             {/* Technician */}
             <Card>
               <CardHeader>
-                <CardTitle>Datos del Técnico</CardTitle>
+                <CardTitle>Responsable</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="grid grid-cols-2 gap-4">
@@ -239,10 +246,13 @@ export function ServiceDetailPage() {
                     <p className="text-xs text-gray-500">Responsable</p>
                     <p className="text-sm font-medium">{currentService.responsable}</p>
                   </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Nombre del Técnico</p>
-                    <p className="text-sm font-medium">{currentService.nombreTecnico}</p>
-                  </div>
+                  {/* Solo servicios antiguos tienen técnico distinto del responsable */}
+                  {currentService.nombreTecnico && (
+                    <div>
+                      <p className="text-xs text-gray-500">Técnico</p>
+                      <p className="text-sm font-medium">{currentService.nombreTecnico}</p>
+                    </div>
+                  )}
                   <div className="flex items-center gap-1">
                     <Phone className="h-3 w-3 text-gray-400" />
                     <div>
@@ -344,7 +354,12 @@ export function ServiceDetailPage() {
 
           {/* Right sidebar: PDF */}
           <div>
-            <PdfStatus serviceId={id!} existingPdfs={currentService.pdfs} />
+            <PdfStatus
+              serviceId={id!}
+              existingPdfs={currentService.pdfs}
+              checks={{ hasSignature: !!currentService.firmaUrl, hasAfterPhotos: afterPhotos.length > 0 }}
+              contentUpdatedAt={currentService.updatedAt}
+            />
           </div>
         </div>
       </div>

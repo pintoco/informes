@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { AlertTriangle, Mail, Phone, Plus, User as UserIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -10,8 +12,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { CreateServiceDto, MaintenanceType, Service, Company } from '@/types';
+import { CreateServiceDto, MaintenanceType, Service, Company, TextTemplate } from '@/types';
 import { listCompanies } from '@/api/companies';
+import { listTextTemplates } from '@/api/textTemplates';
 import { useAuthStore } from '@/store/authStore';
 
 interface ServiceFormProps {
@@ -34,18 +37,45 @@ const defaultValues: CreateServiceDto = {
   contactoTerreno: '',
   fecha: new Date().toISOString().split('T')[0],
   horaInicio: '',
-  responsable: '',
-  nombreTecnico: '',
-  fono: '',
-  email: '',
   tipoMantenimiento: 'PREVENTIVE',
   comentarioNvr: '',
   comentarioCamaras: '',
   observaciones: '',
 };
 
+type CommentField = 'comentarioNvr' | 'comentarioCamaras' | 'observaciones';
+
+/** Lista desplegable que agrega un texto predefinido al final del campo. */
+function TemplatePicker({
+  templates,
+  onInsert,
+}: {
+  templates: TextTemplate[];
+  onInsert: (body: string) => void;
+}) {
+  if (templates.length === 0) return null;
+  return (
+    <select
+      value=""
+      onChange={(e) => {
+        const tpl = templates.find((t) => t.id === e.target.value);
+        if (tpl) onInsert(tpl.body);
+      }}
+      className="h-8 max-w-[60%] rounded-md border border-gray-300 bg-white px-2 text-xs text-gray-600 hover:border-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      title="Insertar un texto predefinido"
+    >
+      <option value="">+ Insertar texto predefinido…</option>
+      {templates.map((t) => (
+        <option key={t.id} value={t.id}>{t.title}</option>
+      ))}
+    </select>
+  );
+}
+
 export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: ServiceFormProps) {
-  const { user } = useAuthStore();
+  const { user, refreshUser } = useAuthStore();
+  const [templates, setTemplates] = useState<TextTemplate[]>([]);
+  const [showNvr, setShowNvr] = useState(false);
   const [formData, setFormData] = useState<CreateServiceDto>(defaultValues);
   const [errors, setErrors] = useState<Partial<Record<keyof CreateServiceDto, string>>>({});
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -53,7 +83,10 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
 
   useEffect(() => {
     listCompanies().then(setCompanies).catch(() => {});
-  }, []);
+    listTextTemplates().then(setTemplates).catch(() => {});
+    // Los datos del responsable salen del perfil: se recarga por si cambió
+    if (!isEdit) refreshUser();
+  }, [isEdit, refreshUser]);
 
   useEffect(() => {
     if (initialData) {
@@ -64,25 +97,14 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
         ordenTrabajo: initialData.ordenTrabajo || '',
         fecha: initialData.fecha ? initialData.fecha.split('T')[0] : defaultValues.fecha,
         horaInicio: initialData.horaInicio || '',
-        responsable: initialData.responsable || '',
-        nombreTecnico: initialData.nombreTecnico || '',
-        fono: initialData.fono || '',
-        email: initialData.email || '',
         tipoMantenimiento: initialData.tipoMantenimiento || 'PREVENTIVE',
         comentarioNvr: initialData.comentarioNvr || '',
         comentarioCamaras: initialData.comentarioCamaras || '',
         observaciones: initialData.observaciones || '',
-        firmaUrl: initialData.firmaUrl || undefined,
       });
-    } else if (user) {
-      setFormData(prev => ({
-        ...prev,
-        responsable: user.name || '',
-        fono: user.phone || '',
-        email: user.email || '',
-      }));
+      if (initialData.comentarioNvr) setShowNvr(true);
     }
-  }, [initialData, user]);
+  }, [initialData]);
 
   const selectedCompany = companies.find(c => c.id === selectedCompanyId);
   const locations = selectedCompany?.locations ?? [];
@@ -94,6 +116,11 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
       updateField('razonSocial', company.name);
       updateField('ubicacion', '');
     }
+  };
+
+  const insertTemplate = (field: CommentField, body: string) => {
+    const current = (formData[field] || '').trimEnd();
+    updateField(field, current ? `${current}\n\n${body}` : body);
   };
 
   const updateField = (field: keyof CreateServiceDto, value: string) => {
@@ -111,13 +138,6 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
     if (!formData.contactoTerreno.trim()) newErrors.contactoTerreno = 'Campo requerido';
     if (!formData.fecha) newErrors.fecha = 'Campo requerido';
     if (!formData.horaInicio.trim()) newErrors.horaInicio = 'Campo requerido';
-    if (!formData.responsable.trim()) newErrors.responsable = 'Campo requerido';
-    if (!formData.nombreTecnico.trim()) newErrors.nombreTecnico = 'Campo requerido';
-    if (!formData.fono.trim()) newErrors.fono = 'Campo requerido';
-    if (!formData.email.trim()) newErrors.email = 'Campo requerido';
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = 'Email inválido';
-    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -295,71 +315,51 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
         </div>
       </div>
 
-      {/* Technician Details */}
+      {/* Responsable: datos del perfil del usuario (no editables aquí) */}
       <div className="bg-white rounded-lg border border-gray-200 p-6 space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">
-          Datos del Técnico
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <Label htmlFor="responsable">
-              Responsable{required}
-            </Label>
-            <Input
-              id="responsable"
-              value={formData.responsable}
-              onChange={(e) => updateField('responsable', e.target.value)}
-              placeholder="Nombre del responsable"
-            />
-            {errors.responsable && (
-              <p className="text-sm text-red-500">{errors.responsable}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="nombreTecnico">
-              Nombre del Técnico{required}
-            </Label>
-            <Input
-              id="nombreTecnico"
-              value={formData.nombreTecnico}
-              onChange={(e) => updateField('nombreTecnico', e.target.value)}
-              placeholder="Nombre completo"
-            />
-            {errors.nombreTecnico && (
-              <p className="text-sm text-red-500">{errors.nombreTecnico}</p>
-            )}
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="fono">
-              Teléfono{required}
-            </Label>
-            <Input
-              id="fono"
-              type="tel"
-              value={formData.fono}
-              onChange={(e) => updateField('fono', e.target.value)}
-              placeholder="+56 9 1234 5678"
-            />
-            {errors.fono && <p className="text-sm text-red-500">{errors.fono}</p>}
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="email">
-              Email{required}
-            </Label>
-            <Input
-              id="email"
-              type="email"
-              value={formData.email}
-              onChange={(e) => updateField('email', e.target.value)}
-              placeholder="tecnico@empresa.com"
-            />
-            {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
-          </div>
+        <div className="flex items-center justify-between border-b pb-2">
+          <h3 className="text-lg font-semibold text-gray-900">Responsable del Servicio</h3>
+          {!isEdit && (
+            <Link to="/profile" className="text-sm text-blue-600 hover:underline">
+              Editar mis datos
+            </Link>
+          )}
         </div>
+        {(() => {
+          const nombre = isEdit ? initialData?.responsable : user?.name;
+          const fono = isEdit ? initialData?.fono : user?.phone;
+          const email = isEdit ? initialData?.email : user?.contactEmail || user?.email;
+          return (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="flex items-center gap-2">
+                  <UserIcon className="h-4 w-4 text-gray-400" />
+                  <span className="font-medium text-gray-900">{nombre || '—'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-gray-400" />
+                  <span className={fono ? 'text-gray-700' : 'text-gray-400'}>{fono || 'Sin teléfono'}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-gray-400" />
+                  <span className="text-gray-700 break-all">{email || '—'}</span>
+                </div>
+              </div>
+              {!isEdit && !fono && (
+                <p className="flex items-center gap-2 text-sm text-orange-600 bg-orange-50 border border-orange-200 rounded-md px-3 py-2">
+                  <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                  Tu perfil no tiene teléfono y el informe saldrá sin él.{' '}
+                  <Link to="/profile" className="underline font-medium">Agregarlo en Mi perfil</Link>
+                </p>
+              )}
+              {!isEdit && (
+                <p className="text-xs text-gray-500">
+                  Se usan los datos de tu perfil. Aparecerán en el informe PDF.
+                </p>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* Technical Comments */}
@@ -370,37 +370,55 @@ export function ServiceForm({ initialData, onSubmit, loading, isEdit = false }: 
 
         <div className="space-y-4">
           <div className="space-y-1">
-            <Label htmlFor="comentarioNvr">Comentario NVR</Label>
-            <Textarea
-              id="comentarioNvr"
-              value={formData.comentarioNvr || ''}
-              onChange={(e) => updateField('comentarioNvr', e.target.value)}
-              placeholder="Estado y observaciones del NVR..."
-              rows={3}
-            />
-          </div>
-
-          <div className="space-y-1">
-            <Label htmlFor="comentarioCamaras">Comentario Cámaras</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="comentarioCamaras">Comentario Cámaras</Label>
+              <TemplatePicker templates={templates} onInsert={(t) => insertTemplate('comentarioCamaras', t)} />
+            </div>
             <Textarea
               id="comentarioCamaras"
               value={formData.comentarioCamaras || ''}
               onChange={(e) => updateField('comentarioCamaras', e.target.value)}
               placeholder="Estado y observaciones de las cámaras..."
-              rows={3}
+              rows={6}
             />
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="observaciones">Observaciones Generales</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="observaciones">Observaciones Generales</Label>
+              <TemplatePicker templates={templates} onInsert={(t) => insertTemplate('observaciones', t)} />
+            </div>
             <Textarea
               id="observaciones"
               value={formData.observaciones || ''}
               onChange={(e) => updateField('observaciones', e.target.value)}
               placeholder="Observaciones adicionales del servicio..."
-              rows={4}
+              rows={6}
             />
           </div>
+
+          {/* NVR: se usa poco, queda oculto hasta que se necesite */}
+          {showNvr ? (
+            <div className="space-y-1">
+              <Label htmlFor="comentarioNvr">Comentario NVR</Label>
+              <Textarea
+                id="comentarioNvr"
+                value={formData.comentarioNvr || ''}
+                onChange={(e) => updateField('comentarioNvr', e.target.value)}
+                placeholder="Estado y observaciones del NVR..."
+                rows={3}
+              />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowNvr(true)}
+              className="flex items-center gap-1 text-sm text-blue-600 hover:underline"
+            >
+              <Plus className="h-4 w-4" />
+              Agregar comentario NVR
+            </button>
+          )}
         </div>
       </div>
 

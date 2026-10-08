@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus, Eye, Edit, Trash2, ChevronLeft, ChevronRight,
-  Download, CheckCircle, XCircle, BarChart3,
+  Download, CheckCircle, MapPin, X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -17,6 +17,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import { ServiceFilters } from '@/components/ServiceFilters';
+import { DashboardInsights } from '@/components/DashboardInsights';
 import { Layout } from '@/components/Layout';
 import { useServices } from '@/hooks/useServices';
 import { useAuthStore } from '@/store/authStore';
@@ -40,25 +41,6 @@ const maintenanceLabels: Record<string, string> = {
   OTHER: 'Otro',
 };
 
-function StatCard({ label, value, icon: Icon, color }: {
-  label: string;
-  value: number;
-  icon: React.ComponentType<{ className?: string }>;
-  color: string;
-}) {
-  return (
-    <div className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 flex items-center gap-4">
-      <div className={`p-3 rounded-full ${color}`}>
-        <Icon className="h-5 w-5 text-white" />
-      </div>
-      <div>
-        <p className="text-2xl font-bold text-gray-900">{value}</p>
-        <p className="text-sm text-gray-500">{label}</p>
-      </div>
-    </div>
-  );
-}
-
 export function DashboardPage() {
   const navigate = useNavigate();
   const { services, loading, fetchServices, remove } = useServices();
@@ -72,6 +54,8 @@ export function DashboardPage() {
   const [exporting, setExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDownloading, setBulkDownloading] = useState(false);
+  // Filtro aplicado desde "Fallas recurrentes": muestra todas las visitas a un punto
+  const [pointFilter, setPointFilter] = useState<{ razonSocial: string; ubicacion: string } | null>(null);
 
   useEffect(() => {
     fetchServices(filters);
@@ -86,7 +70,18 @@ export function DashboardPage() {
     setActiveFilters(newFilters);
     setFilters(merged);
     setSelectedIds(new Set());
+    setPointFilter(null);
   }, [filters.limit]);
+
+  const handleFilterPoint = useCallback((razonSocial: string, ubicacion: string) => {
+    const pointFilters = { search: razonSocial, ubicacion };
+    setActiveFilters(pointFilters);
+    setFilters({ ...pointFilters, page: 1, limit: filters.limit });
+    setSelectedIds(new Set());
+    setPointFilter({ razonSocial, ubicacion });
+  }, [filters.limit]);
+
+  const clearPointFilter = () => handleFilter({});
 
   const handlePageChange = (newPage: number) => {
     setFilters((prev) => ({ ...prev, page: newPage }));
@@ -172,18 +167,24 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Stats cards */}
-        {stats && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Total servicios" value={stats.total} icon={BarChart3} color="bg-blue-500" />
-            <StatCard label="Este mes" value={stats.thisMonth} icon={BarChart3} color="bg-indigo-500" />
-            <StatCard label="Con firma" value={stats.withSignature} icon={CheckCircle} color="bg-green-500" />
-            <StatCard label="Sin firma" value={stats.withoutSignature} icon={XCircle} color="bg-orange-400" />
-          </div>
-        )}
+        {/* Resumen: este mes por cliente, informes por revisar y fallas recurrentes */}
+        {stats && <DashboardInsights stats={stats} onFilterPoint={handleFilterPoint} />}
 
         {/* Filters */}
         <ServiceFilters onFilter={handleFilter} loading={loading} />
+
+        {pointFilter && (
+          <div className="flex items-center justify-between gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-2 text-sm">
+            <span className="flex items-center gap-1 text-red-800">
+              <MapPin className="h-4 w-4" />
+              Visitas a <strong>{pointFilter.ubicacion}</strong> ({pointFilter.razonSocial})
+            </span>
+            <Button size="sm" variant="ghost" onClick={clearPointFilter} className="text-red-700">
+              <X className="h-4 w-4 mr-1" />
+              Quitar filtro
+            </Button>
+          </div>
+        )}
 
         {/* Bulk action bar */}
         {selectedIds.size > 0 && (
@@ -236,7 +237,7 @@ export function DashboardPage() {
                     <TableHead>Razón Social</TableHead>
                     <TableHead>Ubicación</TableHead>
                     <TableHead>Fecha</TableHead>
-                    <TableHead>Técnico</TableHead>
+                    <TableHead>Responsable</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Firma</TableHead>
                     <TableHead>PDF</TableHead>
@@ -270,7 +271,7 @@ export function DashboardPage() {
                           <TableCell className="text-gray-600">
                             {format(parseServiceDate(service.fecha), 'dd/MM/yyyy', { locale: es })}
                           </TableCell>
-                          <TableCell className="text-gray-600">{service.nombreTecnico}</TableCell>
+                          <TableCell className="text-gray-600">{service.responsable}</TableCell>
                           <TableCell>
                             <Badge variant="outline">
                               {maintenanceLabels[service.tipoMantenimiento] || service.tipoMantenimiento}

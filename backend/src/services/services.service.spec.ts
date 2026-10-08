@@ -17,12 +17,16 @@ const tx = {
 };
 
 const mockPrisma = {
+  user: {
+    findFirst: jest.fn(),
+  },
   service: {
     create: jest.fn(),
     findMany: jest.fn(),
     findFirst: jest.fn(),
     update: jest.fn(),
     count: jest.fn(),
+    groupBy: jest.fn(),
   },
   servicePhoto: {
     count: jest.fn(),
@@ -69,8 +73,11 @@ describe('ServicesService', () => {
     service = module.get(ServicesService);
   });
 
+  const PROFILE = { name: 'Felipe Romero', phone: '+569 51996149', email: 'felipe@login.cl', contactEmail: 'tecnico@elementalpro.cl' };
+
   describe('create', () => {
     it('genera la OT y crea el servicio dentro de la misma transacción', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(PROFILE);
       mockPrisma.$transaction.mockImplementation((fn: any) => fn(tx));
       tx.$queryRaw.mockResolvedValue([{ max_num: 7 }]);
       tx.service.create.mockImplementation(async ({ data }: any) => ({
@@ -99,6 +106,100 @@ describe('ServicesService', () => {
       expect(tx.$executeRaw).toHaveBeenCalled(); // advisory lock
       expect(tx.service.create).toHaveBeenCalled();
       expect(result.ordenTrabajo).toMatch(/^\d{4}-008$/);
+    });
+
+    it('toma responsable, fono y email del perfil e ignora los del formulario', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue(PROFILE);
+      mockPrisma.$transaction.mockImplementation((fn: any) => fn(tx));
+      tx.$queryRaw.mockResolvedValue([{ max_num: 0 }]);
+      tx.service.create.mockImplementation(async ({ data }: any) => ({ id: SERVICE_ID, ...data, photos: [], pdfs: [] }));
+
+      const result: any = await service.create(
+        {
+          razonSocial: 'Muni', ubicacion: 'Plaza', contactoTerreno: 'Ana', fecha: '2026-10-08',
+          horaInicio: '10:00', tipoMantenimiento: 'CORRECTIVE' as any,
+          responsable: 'Otro', nombreTecnico: 'Vicente', fono: '1', email: 'x@x.cl',
+        },
+        'user-1',
+      );
+
+      expect(result.responsable).toBe('Felipe Romero');
+      expect(result.fono).toBe('+569 51996149');
+      expect(result.email).toBe('tecnico@elementalpro.cl'); // contactEmail tiene prioridad
+      expect(result.nombreTecnico).toBeUndefined();
+    });
+
+    it('usa el email de acceso si no hay email de contacto', async () => {
+      mockPrisma.user.findFirst.mockResolvedValue({ ...PROFILE, contactEmail: null, phone: null });
+      mockPrisma.$transaction.mockImplementation((fn: any) => fn(tx));
+      tx.$queryRaw.mockResolvedValue([{ max_num: 0 }]);
+      tx.service.create.mockImplementation(async ({ data }: any) => ({ id: SERVICE_ID, ...data, photos: [], pdfs: [] }));
+
+      const result: any = await service.create(
+        { razonSocial: 'M', ubicacion: 'U', contactoTerreno: 'C', fecha: '2026-10-08', horaInicio: '10:00', tipoMantenimiento: 'OTHER' as any },
+        'user-1',
+      );
+      expect(result.email).toBe('felipe@login.cl');
+      expect(result.fono).toBe('');
+    });
+  });
+
+  describe('clone (nueva visita a este punto)', () => {
+    it('copia cliente y ubicación, pero no comentarios ni firma', async () => {
+      mockPrisma.service.findFirst.mockResolvedValue({
+        id: SERVICE_ID, razonSocial: 'Muni', ubicacion: 'Plaza', contactoTerreno: 'Ana',
+        tipoMantenimiento: 'CORRECTIVE', observaciones: 'texto viejo', comentarioCamaras: 'viejo',
+        firmaUrl: 'data:image/png;base64,AAAA', nombreTecnico: 'Vicente',
+      });
+      mockPrisma.user.findFirst.mockResolvedValue(PROFILE);
+      mockPrisma.$transaction.mockImplementation((fn: any) => fn(tx));
+      tx.$queryRaw.mockResolvedValue([{ max_num: 41 }]);
+      tx.service.create.mockImplementation(async ({ data }: any) => ({ id: 'new', ...data, photos: [], pdfs: [] }));
+
+      const visit: any = await service.clone(SERVICE_ID, 'user-1');
+
+      expect(visit.razonSocial).toBe('Muni');
+      expect(visit.ubicacion).toBe('Plaza');
+      expect(visit.responsable).toBe('Felipe Romero');
+      expect(visit.observaciones).toBeUndefined();
+      expect(visit.comentarioCamaras).toBeUndefined();
+      expect(visit.firmaUrl).toBeUndefined();
+      expect(visit.nombreTecnico).toBeUndefined();
+      expect(visit.horaInicio).toMatch(/^\d{2}:\d{2}$/);
+    });
+  });
+
+  describe('getStats', () => {
+    it('detecta informes incompletos y PDF desactualizado', async () => {
+      const pdfAt = new Date('2026-10-01T12:00:00Z');
+      mockPrisma.service.count.mockResolvedValue(3);
+      mockPrisma.service.groupBy
+        .mockResolvedValueOnce([{ razonSocial: 'Muni', _count: { id: 3 } }])
+        .mockResolvedValueOnce([{ razonSocial: 'Muni', ubicacion: 'Plaza', _count: { id: 4 }, _max: { fecha: new Date('2026-10-01') } }]);
+      mockPrisma.service.findMany.mockResolvedValue([
+        // completo
+        { id: 'a', ordenTrabajo: '2026-001', razonSocial: 'Muni', ubicacion: 'U1', fecha: new Date(), updatedAt: pdfAt,
+          firmaUrl: 'x', photos: [{ categoria: 'AFTER' }], pdfs: [{ status: 'READY', createdAt: pdfAt }] },
+        // editado después del PDF
+        { id: 'b', ordenTrabajo: '2026-002', razonSocial: 'Muni', ubicacion: 'U2', fecha: new Date(), updatedAt: new Date('2026-10-02T00:00:00Z'),
+          firmaUrl: 'x', photos: [{ categoria: 'AFTER' }], pdfs: [{ status: 'READY', createdAt: pdfAt }] },
+        // sin firma, sin fotos después, sin PDF
+        { id: 'c', ordenTrabajo: '2026-003', razonSocial: 'Muni', ubicacion: 'U3', fecha: new Date(), updatedAt: pdfAt,
+          firmaUrl: null, photos: [{ categoria: 'BEFORE' }], pdfs: [] },
+      ]);
+
+      const stats: any = await service.getStats();
+
+      expect(stats.attention.totalItems).toBe(2);
+      expect(stats.attention.pdfDesactualizado).toBe(1);
+      expect(stats.attention.sinFirma).toBe(1);
+      expect(stats.attention.sinFotosDespues).toBe(1);
+      expect(stats.attention.sinPdf).toBe(1);
+      expect(stats.attention.items.find((i: any) => i.id === 'c').issues).toEqual(
+        ['Sin firma', 'Sin fotos "después"', 'Sin PDF'],
+      );
+      expect(stats.recurringPoints.items[0]).toMatchObject({ ubicacion: 'Plaza', correctivos: 4 });
+      expect(stats.thisMonthByClient).toEqual([{ razonSocial: 'Muni', count: 3 }]);
     });
   });
 
@@ -145,10 +246,11 @@ describe('ServicesService', () => {
       expect(mockPrisma.servicePhoto.create).not.toHaveBeenCalled();
     });
 
-    it('usa el tamaño real del archivo en MinIO', async () => {
+    it('usa el tamaño real del archivo en el almacenamiento', async () => {
       const key = `services/${SERVICE_ID}/photos/before/${PHOTO_UUID}.jpg`;
       mockStorage.head.mockResolvedValue({ ContentLength: 12345, ContentType: 'image/jpeg' });
       mockPrisma.servicePhoto.create.mockImplementation(async ({ data }: any) => ({ id: 'p1', ...data }));
+      mockPrisma.$transaction.mockImplementation((ops: any[]) => Promise.all(ops));
 
       const photo: any = await service.confirmPhotoUpload(SERVICE_ID, {
         key,
@@ -247,6 +349,12 @@ describe('generateReportHtml', () => {
     );
     expect(html).not.toContain('onerror');
     expect(html).toContain('Firma pendiente');
+  });
+
+  it('omite la fila de técnico en servicios nuevos', () => {
+    const html = generateReportHtml({ ...base, nombreTecnico: null }, []);
+    expect(html).not.toContain('>Técnico<');
+    expect(generateReportHtml(base, [])).toContain('>Técnico<');
   });
 
   it('muestra la fecha sin correrse un día', () => {

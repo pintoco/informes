@@ -13,7 +13,6 @@ function buildParams(filters: ServiceFilters): URLSearchParams {
   if (filters.fechaDesde) params.append('fechaDesde', filters.fechaDesde);
   if (filters.fechaHasta) params.append('fechaHasta', filters.fechaHasta);
   if (filters.search) params.append('search', filters.search);
-  if (filters.nombreTecnico) params.append('nombreTecnico', filters.nombreTecnico);
   if (filters.tipoMantenimiento) params.append('tipoMantenimiento', filters.tipoMantenimiento);
   if (filters.page) params.append('page', String(filters.page));
   if (filters.limit) params.append('limit', String(filters.limit));
@@ -48,7 +47,8 @@ export const exportServicesCsv = async (filters: ServiceFilters = {}): Promise<v
   window.URL.revokeObjectURL(url);
 };
 
-export const cloneService = async (id: string): Promise<Service> => {
+// Crea un servicio nuevo para el mismo cliente/ubicación ("Nueva visita a este punto")
+export const newVisitFromService = async (id: string): Promise<Service> => {
   const { data } = await apiClient.post<Service>(`/services/${id}/clone`);
   return data;
 };

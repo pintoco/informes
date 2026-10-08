@@ -22,7 +22,6 @@ export function ServiceFilters({ onFilter, loading }: ServiceFiltersProps) {
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [search, setSearch] = useState('');
-  const [nombreTecnico, setNombreTecnico] = useState('');
   const [tipoMantenimiento, setTipoMantenimiento] = useState<MaintenanceType | ''>('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -32,7 +31,6 @@ export function ServiceFilters({ onFilter, loading }: ServiceFiltersProps) {
       fechaDesde: fechaDesde || undefined,
       fechaHasta: fechaHasta || undefined,
       search: search || undefined,
-      nombreTecnico: nombreTecnico || undefined,
       tipoMantenimiento: tipoMantenimiento || undefined,
       page: 1,
     });
@@ -43,23 +41,22 @@ export function ServiceFilters({ onFilter, loading }: ServiceFiltersProps) {
     setFechaDesde('');
     setFechaHasta('');
     setSearch('');
-    setNombreTecnico('');
     setTipoMantenimiento('');
     onFilter({ page: 1 });
   };
 
-  const hasFilters = ubicacion || fechaDesde || fechaHasta || search || nombreTecnico || tipoMantenimiento;
+  const hasFilters = ubicacion || fechaDesde || fechaHasta || search || tipoMantenimiento;
 
   return (
     <form onSubmit={handleSubmit} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="space-y-1">
           <Label htmlFor="search">Buscar</Label>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <Input
               id="search"
-              placeholder="OT, Razón Social..."
+              placeholder="OT, cliente, ubicación o responsable..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9"
@@ -74,16 +71,6 @@ export function ServiceFilters({ onFilter, loading }: ServiceFiltersProps) {
             placeholder="Ciudad o dirección..."
             value={ubicacion}
             onChange={(e) => setUbicacion(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1">
-          <Label htmlFor="nombreTecnico">Técnico</Label>
-          <Input
-            id="nombreTecnico"
-            placeholder="Nombre del técnico..."
-            value={nombreTecnico}
-            onChange={(e) => setNombreTecnico(e.target.value)}
           />
         </div>
 

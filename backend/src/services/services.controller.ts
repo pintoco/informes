@@ -59,7 +59,7 @@ export class ServicesController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   create(@Body() dto: CreateServiceDto, @Request() req: any) {
-    return this.servicesService.create(dto, req.user?.sub);
+    return this.servicesService.create(dto, req.user.sub);
   }
 
   @Get(':id')
@@ -137,6 +137,6 @@ export class ServicesController {
   @Post(':id/clone')
   @HttpCode(HttpStatus.CREATED)
   clone(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
-    return this.servicesService.clone(id, req.user?.sub);
+    return this.servicesService.clone(id, req.user.sub);
   }
 }

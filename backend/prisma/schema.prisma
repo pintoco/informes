@@ -43,6 +43,8 @@ model User {
   email             String    @unique
   name              String
   phone             String?
+  // Email que aparece en los informes (si es distinto del email de acceso)
+  contactEmail      String?
   passwordHash      String?
   passwordChangedAt DateTime?
   role              Role      @default(TECHNICIAN)
@@ -88,7 +90,8 @@ model Service {
   fecha               DateTime
   horaInicio          String
   responsable         String
-  nombreTecnico       String
+  // Histórico: desde 2026-10 el responsable es el usuario que crea el servicio
+  nombreTecnico       String?
   fono                String
   email               String
   tipoMantenimiento   MaintenanceType
@@ -154,4 +157,16 @@ model ServicePdf {
   updatedAt DateTime @updatedAt
 
   @@index([serviceId])
+}
+
+// ─── Textos predefinidos ──────────────────────────────────────────────────────
+// Bloques de texto frecuentes que se insertan en los comentarios del servicio.
+
+model TextTemplate {
+  id        String   @id @default(uuid())
+  title     String
+  body      String
+  orden     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

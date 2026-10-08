@@ -52,24 +52,26 @@ export class CreateServiceDto {
   @MaxLength(10)
   horaInicio: string;
 
+  // responsable, fono y email se toman del perfil del usuario conectado
+  // (ServicesService.responsableFromProfile). Se aceptan por compatibilidad pero se ignoran.
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(255)
-  responsable: string;
+  responsable?: string;
 
   @IsString()
-  @IsNotEmpty()
+  @IsOptional()
   @MaxLength(255)
-  nombreTecnico: string;
+  nombreTecnico?: string;
 
   @IsString()
-  @IsNotEmpty()
-  @MaxLength(20)
-  fono: string;
+  @IsOptional()
+  @MaxLength(30)
+  fono?: string;
 
   @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  @IsOptional()
+  email?: string;
 
   @IsEnum(MaintenanceType)
   tipoMantenimiento: MaintenanceType;

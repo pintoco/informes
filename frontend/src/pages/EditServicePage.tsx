@@ -17,6 +17,9 @@ export function EditServicePage() {
   const navigate = useNavigate();
   const { currentService, loading, fetchService, update } = useServices();
   const [saving, setSaving] = useState(false);
+  const [signatureSaved, setSignatureSaved] = useState(false);
+  // Cambios hechos en esta pantalla (datos, fotos, firma) para detectar PDF desactualizado
+  const [lastChangeAt, setLastChangeAt] = useState<number | null>(null);
 
   const serviceId = id || '';
   const {
@@ -46,11 +49,14 @@ export function EditServicePage() {
     setSaving(true);
     await update(serviceId, dto);
     setSaving(false);
+    setLastChangeAt(Date.now());
   };
 
   const handleSignatureSave = async (dataUrl: string, nombreReceptor: string) => {
     try {
       await updateService(serviceId, { firmaUrl: dataUrl, firmaNombreReceptor: nombreReceptor });
+      setSignatureSaved(true);
+      setLastChangeAt(Date.now());
     } catch (err) {
       console.error('Error saving signature:', err);
     }
@@ -58,10 +64,12 @@ export function EditServicePage() {
 
   const handleUpload = async (files: File[], categoria: PhotoCategory) => {
     await uploadMultiple(files, categoria);
+    setLastChangeAt(Date.now());
   };
 
   const handleDelete = async (photoId: string) => {
     await removePhoto(photoId);
+    setLastChangeAt(Date.now());
   };
 
   if (loading && !currentService) {
@@ -120,7 +128,15 @@ export function EditServicePage() {
         />
 
         {/* PDF */}
-        <PdfStatus serviceId={serviceId} existingPdfs={currentService?.pdfs} />
+        <PdfStatus
+          serviceId={serviceId}
+          existingPdfs={currentService?.pdfs}
+          checks={{
+            hasSignature: signatureSaved || !!currentService?.firmaUrl,
+            hasAfterPhotos: photos.some((p) => p.categoria === 'AFTER'),
+          }}
+          contentUpdatedAt={lastChangeAt ?? currentService?.updatedAt}
+        />
 
         {/* Actions */}
         <div className="flex justify-end gap-3">

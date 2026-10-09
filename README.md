@@ -20,19 +20,23 @@ Aplicación web para registrar servicios técnicos de CCTV: órdenes de trabajo,
 - Roles `ADMIN` y `TECHNICIAN`; contraseña con validación de complejidad
 - JWT con verificación en BD por cada request — detecta usuarios eliminados o con rol cambiado sin necesidad de re-login
 - Usuarios con soft delete bloqueados en login y en cada request autenticado
-- Rate limiting: 10 intentos/15min en login, 5/hora en registro, 100/15min global
+- Rate limiting: 10 intentos fallidos/15min en login, 300/15min global (configurable)
+- Sin registro público: los usuarios los crea un ADMIN; "Mi perfil" para nombre, teléfono, email de informes y contraseña
 
 ### Órdenes de trabajo
 - Numeración automática `YYYY-NNN` sin colisiones usando `pg_advisory_xact_lock`
-- Filtros avanzados: ubicación, técnico, tipo de mantenimiento, rango de fechas, búsqueda global
-- **Clonar servicio** — duplica todos los campos con la fecha actual y genera nueva OT al instante
+- Filtros: ubicación, tipo de mantenimiento, rango de fechas y búsqueda por OT, cliente, ubicación o responsable
+- Responsable, teléfono y email del servicio se toman del perfil del usuario conectado
+- **Textos predefinidos** insertables en los comentarios (administrables en "Textos")
+- **Nueva visita a este punto** — crea un servicio para el mismo cliente y ubicación, con fecha de hoy (sin copiar comentarios ni firma)
+- **Panel**: servicios del mes por cliente, informes por revisar (sin firma, sin fotos "después", sin PDF o PDF desactualizado) y puntos con fallas recurrentes
 - **Exportar a CSV** con filtros activos (BOM UTF-8, compatible Excel, fechas en formato DD/MM/YYYY)
 - Soft delete con auditoría completa (`createdBy`, `updatedBy`, `deletedBy`, `deletedAt`)
 
 ### Fotos
 - Categorías **ANTES / DESPUÉS** con orden persistente
 - Compresión en cliente antes de subir: máx. 1 MB y 1920 px (`browser-image-compression`)
-- Subida directa a MinIO vía URL presignada (sin pasar por el backend)
+- Subida directa al almacenamiento (S3/MinIO) vía URL firmada; buckets privados, lectura con URLs firmadas temporales
 - **Lightbox** — clic en cualquier foto la amplía a pantalla completa; Esc o clic fuera para cerrar
 - **Botón de cámara** en móvil que abre directamente la cámara trasera
 - Límite de 30 fotos por servicio
@@ -173,21 +177,29 @@ git checkout v1.0.0
 |--------|------|-------------|
 | POST | `/api/auth/register` | Crear cuenta (siempre TECHNICIAN) |
 | POST | `/api/auth/login` | Login → JWT |
-| GET | `/api/auth/me` | Usuario autenticado actual |
+| GET | `/api/auth/me` | Perfil del usuario conectado |
+| PUT | `/api/auth/me` | Actualizar perfil (nombre, teléfono, email para informes, contraseña) |
 
 ### Servicios
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| GET | `/api/services` | Listar (paginado; filtros: `ubicacion`, `search`, `nombreTecnico`, `tipoMantenimiento`, `fechaDesde`, `fechaHasta`, `page`, `limit`) |
+| GET | `/api/services` | Listar (paginado; filtros: `ubicacion`, `search`, `tipoMantenimiento`, `fechaDesde`, `fechaHasta`, `page`, `limit`) |
 | POST | `/api/services` | Crear servicio |
-| GET | `/api/services/stats` | Estadísticas del dashboard |
+| GET | `/api/services/stats` | Panel: mes por cliente, informes por revisar, fallas recurrentes |
 | GET | `/api/services/export` | Exportar CSV (respeta filtros activos) |
 | POST | `/api/services/bulk-pdf-download` | Descargar PDFs de múltiples servicios como ZIP (`{ serviceIds: string[] }`) |
 | GET | `/api/services/:id` | Detalle del servicio |
 | PUT | `/api/services/:id` | Actualizar servicio |
-| DELETE | `/api/services/:id` | Soft delete |
-| POST | `/api/services/:id/clone` | Clonar servicio (nueva OT, fecha actual) |
+| DELETE | `/api/services/:id` | Soft delete (solo ADMIN) |
+| POST | `/api/services/:id/clone` | Nueva visita al mismo punto (nueva OT, fecha de hoy) |
+
+### Textos predefinidos
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/text-templates` | Listar |
+| POST / PUT / DELETE | `/api/text-templates[/:id]` | Administrar (solo ADMIN) |
 
 ### Fotos
 

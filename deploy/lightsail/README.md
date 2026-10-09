@@ -100,7 +100,8 @@ Al final muestra una tabla comparando la cantidad de registros de Railway y de L
 3. En el DNS, apuntar `informes.elementalpro.cl` a la IP estática de Lightsail.
 4. En el `.env`, `DOMAIN=informes.elementalpro.cl` y luego `docker compose up -d`.
 5. Probar: iniciar sesión, ver fotos antiguas, descargar un PDF antiguo, crear un servicio con fotos y generar su PDF.
-6. Mantener Railway algunos días como respaldo. **Volver atrás** = apuntar el DNS de nuevo a Railway.
+6. En **Empresas**, configurar el día de corte del informe mensual de cada institución (ej. Tierra Amarilla = 13). Railway no tiene ese dato, así que la copia los deja en 1. También revisar **Mi perfil** (teléfono) de cada usuario.
+7. Mantener Railway algunos días como respaldo. **Volver atrás** = apuntar el DNS de nuevo a Railway.
 
 > Las sesiones abiertas en Railway no sirven en Lightsail (el `JWT_SECRET` es distinto): los usuarios deben iniciar sesión de nuevo.
 

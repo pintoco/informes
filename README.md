@@ -29,6 +29,7 @@ Aplicación web para registrar servicios técnicos de CCTV: órdenes de trabajo,
 - Responsable, teléfono y email del servicio se toman del perfil del usuario conectado
 - **Textos predefinidos** insertables en los comentarios (administrables en "Textos")
 - **Nueva visita a este punto** — crea un servicio para el mismo cliente y ubicación, con fecha de hoy (sin copiar comentarios ni firma)
+- **Informe mensual por institución** (ADMIN): cada empresa tiene su día de corte (ej. del 13 al 12); muestra los servicios del período con totales por tipo, genera en lote los PDFs faltantes y descarga un **PDF consolidado** (portada + resumen + informes) o un **ZIP**
 - **Panel**: servicios del mes por cliente, informes por revisar (sin firma, sin fotos "después", sin PDF o PDF desactualizado) y puntos con fallas recurrentes
 - **Exportar a CSV** con filtros activos (BOM UTF-8, compatible Excel, fechas en formato DD/MM/YYYY)
 - Soft delete con auditoría completa (`createdBy`, `updatedBy`, `deletedBy`, `deletedAt`)
@@ -193,6 +194,16 @@ git checkout v1.0.0
 | PUT | `/api/services/:id` | Actualizar servicio |
 | DELETE | `/api/services/:id` | Soft delete (solo ADMIN) |
 | POST | `/api/services/:id/clone` | Nueva visita al mismo punto (nueva OT, fecha de hoy) |
+
+### Informe mensual (ADMIN)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| GET | `/api/reports/monthly/periods?companyId=` | Períodos de la institución según su día de corte |
+| GET | `/api/reports/monthly?companyId=&from=YYYY-MM-DD` | Servicios del período, totales y estado de cada PDF |
+| POST | `/api/reports/monthly/generate-missing` | Encola los PDFs faltantes o desactualizados del período |
+| GET | `/api/reports/monthly/pdf?companyId=&from=` | PDF consolidado |
+| GET | `/api/reports/monthly/zip?companyId=&from=` | ZIP con los PDFs del período |
 
 ### Textos predefinidos
 

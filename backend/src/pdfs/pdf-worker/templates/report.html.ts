@@ -3,7 +3,7 @@ import * as path from 'path';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
-let LOGO_BASE64 = '';
+export let LOGO_BASE64 = '';
 try {
   const buf = fs.readFileSync(path.join(__dirname, 'logo.png'));
   LOGO_BASE64 = `data:image/png;base64,${buf.toString('base64')}`;
@@ -48,7 +48,7 @@ const maintenanceTypeLabels: Record<string, string> = {
 
 // Todo texto ingresado por usuarios DEBE pasar por esc() antes de entrar al HTML:
 // evita romper el PDF y que se inyecte HTML/JS en Chromium.
-const esc = (value: string | null | undefined): string =>
+export const esc = (value: string | null | undefined): string =>
   (value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')

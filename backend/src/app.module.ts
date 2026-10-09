@@ -9,6 +9,7 @@ import { ServicesModule } from './services/services.module';
 import { PdfsModule } from './pdfs/pdfs.module';
 import { StorageModule } from './storage/storage.module';
 import { TextTemplatesModule } from './text-templates/text-templates.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { TextTemplatesModule } from './text-templates/text-templates.module';
     PdfsModule,
     StorageModule,
     TextTemplatesModule,
+    ReportsModule,
   ],
 })
 export class AppModule {}

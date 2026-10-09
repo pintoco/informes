@@ -66,6 +66,8 @@ async function bootstrap() {
     origin: corsOrigins.length === 1 ? corsOrigins[0] : corsOrigins,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+    // Nombre de archivo de las descargas (informe mensual, ZIP, CSV)
+    exposedHeaders: ['Content-Disposition'],
     credentials: true,
   });
 

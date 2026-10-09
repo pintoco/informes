@@ -60,11 +60,14 @@ model User {
 // ─── Companies ────────────────────────────────────────────────────────────────
 
 model Company {
-  id        String     @id @default(uuid())
-  name      String     @unique
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  locations Location[]
+  id             String     @id @default(uuid())
+  name           String     @unique
+  // Día del mes en que empieza el período del informe mensual (1–28).
+  // Ej: 13 → del 13 de un mes al 12 del siguiente.
+  periodStartDay Int        @default(1)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  locations      Location[]
 }
 
 model Location {

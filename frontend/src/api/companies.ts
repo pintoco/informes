@@ -6,13 +6,13 @@ export const listCompanies = async (): Promise<Company[]> => {
   return data;
 };
 
-export const createCompany = async (name: string): Promise<Company> => {
-  const { data } = await apiClient.post<Company>('/companies', { name });
+export const createCompany = async (name: string, periodStartDay: number): Promise<Company> => {
+  const { data } = await apiClient.post<Company>('/companies', { name, periodStartDay });
   return data;
 };
 
-export const updateCompany = async (id: string, name: string): Promise<Company> => {
-  const { data } = await apiClient.put<Company>(`/companies/${id}`, { name });
+export const updateCompany = async (id: string, name: string, periodStartDay: number): Promise<Company> => {
+  const { data } = await apiClient.put<Company>(`/companies/${id}`, { name, periodStartDay });
   return data;
 };
 

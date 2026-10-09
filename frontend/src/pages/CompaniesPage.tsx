@@ -17,6 +17,7 @@ export function CompaniesPage() {
   const [showCompanyForm, setShowCompanyForm] = useState(false);
   const [editingCompany, setEditingCompany] = useState<Company | null>(null);
   const [companyName, setCompanyName] = useState('');
+  const [periodStartDay, setPeriodStartDay] = useState(1);
   const [savingCompany, setSavingCompany] = useState(false);
 
   // Location form
@@ -45,12 +46,14 @@ export function CompaniesPage() {
   const openCreateCompany = () => {
     setEditingCompany(null);
     setCompanyName('');
+    setPeriodStartDay(1);
     setShowCompanyForm(true);
   };
 
   const openEditCompany = (c: Company) => {
     setEditingCompany(c);
     setCompanyName(c.name);
+    setPeriodStartDay(c.periodStartDay ?? 1);
     setShowCompanyForm(true);
   };
 
@@ -59,10 +62,10 @@ export function CompaniesPage() {
     setSavingCompany(true);
     try {
       if (editingCompany) {
-        await updateCompany(editingCompany.id, companyName.trim());
+        await updateCompany(editingCompany.id, companyName.trim(), periodStartDay);
         toast.success('Empresa actualizada');
       } else {
-        await createCompany(companyName.trim());
+        await createCompany(companyName.trim(), periodStartDay);
         toast.success('Empresa creada');
       }
       setShowCompanyForm(false);
@@ -124,10 +127,29 @@ export function CompaniesPage() {
               <h2 className="text-lg font-semibold">{editingCompany ? 'Editar Empresa' : 'Nueva Empresa'}</h2>
               <button onClick={() => setShowCompanyForm(false)}><X className="h-5 w-5 text-gray-400" /></button>
             </div>
-            <div className="space-y-1 max-w-md">
-              <Label>Nombre de la empresa *</Label>
-              <Input value={companyName} onChange={e => setCompanyName(e.target.value)}
-                placeholder="Empresa S.A." onKeyDown={e => e.key === 'Enter' && handleSaveCompany()} />
+            <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-4 max-w-2xl">
+              <div className="space-y-1">
+                <Label>Nombre de la empresa *</Label>
+                <Input value={companyName} onChange={e => setCompanyName(e.target.value)}
+                  placeholder="Empresa S.A." onKeyDown={e => e.key === 'Enter' && handleSaveCompany()} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="periodStartDay">Período del informe mensual</Label>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <span>Desde el día</span>
+                  <select
+                    id="periodStartDay"
+                    value={periodStartDay}
+                    onChange={e => setPeriodStartDay(Number(e.target.value))}
+                    className="h-10 rounded-md border border-input bg-background px-2 text-sm"
+                  >
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
+                      <option key={d} value={d}>{d}</option>
+                    ))}
+                  </select>
+                  <span>{periodStartDay === 1 ? 'al último día del mes' : `al ${periodStartDay - 1} del mes siguiente`}</span>
+                </div>
+              </div>
             </div>
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={() => setShowCompanyForm(false)}>Cancelar</Button>
@@ -163,6 +185,11 @@ export function CompaniesPage() {
                     <span className="font-semibold text-gray-900">{company.name}</span>
                     <span className="text-xs text-gray-400 ml-2">
                       {company.locations.length} ubicación{company.locations.length !== 1 ? 'es' : ''}
+                    </span>
+                    <span className="text-xs text-gray-400 ml-2 hidden sm:inline">
+                      · Período: {company.periodStartDay === 1 || !company.periodStartDay
+                        ? 'mes calendario'
+                        : `día ${company.periodStartDay} al ${company.periodStartDay - 1}`}
                     </span>
                   </button>
                   <div className="flex gap-2">

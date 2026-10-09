@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { LogOut, LayoutDashboard, Plus, User, Users, Building2, FileText } from 'lucide-react';
+import { LogOut, LayoutDashboard, Plus, User, Users, Building2, FileText, CalendarRange } from 'lucide-react';
 import logo from '@/assets/logo.png';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/store/authStore';
@@ -18,6 +18,7 @@ export function Layout({ children }: LayoutProps) {
     { href: '/', label: 'Dashboard', icon: LayoutDashboard },
     { href: '/services/new', label: 'Nuevo Servicio', icon: Plus },
     ...(user?.role === 'ADMIN' ? [
+      { href: '/reports/monthly', label: 'Informe mensual', icon: CalendarRange },
       { href: '/companies', label: 'Empresas', icon: Building2 },
       { href: '/text-templates', label: 'Textos', icon: FileText },
       { href: '/users', label: 'Usuarios', icon: Users },

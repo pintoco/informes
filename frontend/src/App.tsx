@@ -11,6 +11,7 @@ import { UsersPage } from '@/pages/UsersPage';
 import { CompaniesPage } from '@/pages/CompaniesPage';
 import { ProfilePage } from '@/pages/ProfilePage';
 import { TextTemplatesPage } from '@/pages/TextTemplatesPage';
+import { MonthlyReportPage } from '@/pages/MonthlyReportPage';
 
 function ProtectedRoute() {
   const { isAuthenticated, refreshUser } = useAuthStore();
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="/companies" element={<CompaniesPage />} />
           <Route path="/profile" element={<ProfilePage />} />
           <Route path="/text-templates" element={<TextTemplatesPage />} />
+          <Route path="/reports/monthly" element={<MonthlyReportPage />} />
         </Route>
 
         {/* Fallback */}

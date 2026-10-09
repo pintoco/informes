@@ -18,14 +18,22 @@ export class CompaniesService {
   async createCompany(dto: CreateCompanyDto) {
     const existing = await this.prisma.company.findUnique({ where: { name: dto.name } });
     if (existing) throw new ConflictException('Ya existe una empresa con ese nombre');
-    return this.prisma.company.create({ data: { name: dto.name }, include: { locations: true } });
+    return this.prisma.company.create({
+      data: { name: dto.name, periodStartDay: dto.periodStartDay ?? 1 },
+      include: { locations: true },
+    });
   }
 
   async updateCompany(id: string, dto: CreateCompanyDto) {
     const company = await this.findCompany(id);
+    const data = {
+      name: dto.name,
+      ...(dto.periodStartDay !== undefined && { periodStartDay: dto.periodStartDay }),
+    };
     if (company.name === dto.name) {
-      return this.prisma.company.findUnique({
+      return this.prisma.company.update({
         where: { id },
+        data,
         include: { locations: { orderBy: { name: 'asc' } } },
       });
     }
@@ -36,7 +44,7 @@ export class CompaniesService {
     const [updated] = await this.prisma.$transaction([
       this.prisma.company.update({
         where: { id },
-        data: { name: dto.name },
+        data,
         include: { locations: { orderBy: { name: 'asc' } } },
       }),
       this.prisma.service.updateMany({

@@ -32,6 +32,8 @@ export interface TextTemplate {
 export interface Company {
   id: string;
   name: string;
+  // Día en que empieza el período del informe mensual (1–28)
+  periodStartDay: number;
   locations: Location[];
   createdAt: string;
 }
@@ -176,4 +178,33 @@ export interface ConfirmPhotoUploadDto {
   originalName: string;
   categoria: PhotoCategory;
   orden: number;
+}
+
+// ── Informe mensual ───────────────────────────────────────────────────────────
+
+export interface ReportPeriod {
+  from: string; // YYYY-MM-DD (inclusive)
+  to: string; // YYYY-MM-DD (inclusive)
+}
+
+export type MonthlyPdfState = 'READY' | 'STALE' | 'IN_PROGRESS' | 'MISSING';
+
+export interface MonthlyReportService {
+  id: string;
+  ordenTrabajo: string;
+  fecha: string;
+  ubicacion: string;
+  tipoMantenimiento: MaintenanceType;
+  trabajo: string;
+  firma: boolean;
+  fotos: number;
+  fotosDespues: number;
+  pdf: MonthlyPdfState;
+}
+
+export interface MonthlyReport {
+  company: Pick<Company, 'id' | 'name' | 'periodStartDay'>;
+  period: ReportPeriod;
+  totals: { total: number; byType: Partial<Record<MaintenanceType, number>> };
+  services: MonthlyReportService[];
 }

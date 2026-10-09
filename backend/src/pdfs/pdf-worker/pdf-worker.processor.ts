@@ -2,17 +2,16 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
 import * as sharp from 'sharp';
-import puppeteer, { Browser } from 'puppeteer';
 import { PrismaService } from '../../prisma/prisma.service';
 import { StorageService } from '../../storage/storage.service';
 import { generateReportHtml } from './templates/report.html';
+import { renderHtmlToPdf } from '../pdf-renderer';
 import { PDF_QUEUE } from '../../queue/queue.module';
 import { PdfJobData } from '../../queue/queue.service';
 
 // Máximo ancho de imagen embebida en el PDF. 1200px es suficiente para A4 a 150dpi.
 const PDF_IMAGE_MAX_WIDTH = 1200;
 const PDF_IMAGE_QUALITY = 72; // JPEG quality 1-100
-const PDF_RENDER_TIMEOUT_MS = 60_000;
 
 // concurrency 1: un solo Chromium a la vez (importante en instancias de 2 GB)
 @Processor(PDF_QUEUE, { concurrency: 1 })
@@ -82,7 +81,7 @@ export class PdfWorkerProcessor extends WorkerHost {
       }
 
       const html = generateReportHtml(service, photosWithData);
-      const pdfBuffer = await this.renderPdf(html);
+      const pdfBuffer = await renderHtmlToPdf(html);
 
       // Subir PDF a S3/MinIO
       const pdfKey = `services/${serviceId}/pdfs/${pdfId}.pdf`;
@@ -114,48 +113,6 @@ export class PdfWorkerProcessor extends WorkerHost {
       });
 
       throw error; // BullMQ reintentará según la config del job
-    }
-  }
-
-  private async renderPdf(html: string): Promise<Buffer> {
-    let browser: Browser | undefined;
-    try {
-      browser = await puppeteer.launch({
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-        ],
-      });
-      const page = await browser.newPage();
-      await page.setJavaScriptEnabled(false);
-
-      // El HTML es autocontenido (imágenes en data URLs): se bloquea cualquier petición
-      // de red para que un contenido malicioso no pueda alcanzar servicios internos.
-      await page.setRequestInterception(true);
-      page.on('request', (req) => {
-        const url = req.url();
-        if (url.startsWith('data:') || url === 'about:blank') {
-          req.continue();
-        } else {
-          req.abort();
-        }
-      });
-
-      await page.setContent(html, { waitUntil: 'load', timeout: PDF_RENDER_TIMEOUT_MS });
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: { top: '20mm', right: '15mm', bottom: '20mm', left: '15mm' },
-        timeout: PDF_RENDER_TIMEOUT_MS,
-      });
-      return Buffer.from(pdf);
-    } finally {
-      // Siempre cerrar Chromium, incluso si falla: evita procesos huérfanos consumiendo RAM
-      await browser?.close().catch(() => undefined);
     }
   }
 }

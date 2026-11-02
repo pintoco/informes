@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { AlertTriangle, Archive, CheckCircle, FileText, RefreshCw, Settings } from 'lucide-react';
@@ -8,9 +8,10 @@ import { Layout } from '@/components/Layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { listCompanies } from '@/api/companies';
-import { downloadMonthlyFile, generateMissingPdfs, getMonthlyReport, getReportPeriods } from '@/api/reports';
+import { downloadMonthlyFile, generateMissingPdfs, getMonthlyReport, getReportPeriods, ReportRange } from '@/api/reports';
 import { parseServiceDate } from '@/lib/utils';
 import { Company, MonthlyPdfState, MonthlyReport, ReportPeriod } from '@/types';
 
@@ -31,13 +32,23 @@ const pdfBadge: Record<MonthlyPdfState, { label: string; variant: 'success' | 'i
 const formatPeriod = (p: ReportPeriod) =>
   `${format(parseServiceDate(p.from), "d MMM yyyy", { locale: es })} – ${format(parseServiceDate(p.to), "d MMM yyyy", { locale: es })}`;
 
-// Informe mensual por institución: cada una tiene su período (ej. del 13 al 12).
+// Valor del selector de período que activa el rango de fechas elegido a mano
+const CUSTOM = 'custom';
+const MAX_CUSTOM_DAYS = 366;
+
+const daysBetween = (from: string, to: string) =>
+  (parseServiceDate(to).getTime() - parseServiceDate(from).getTime()) / 86_400_000 + 1;
+
+// Informe mensual por institución: cada una tiene su período (ej. del 13 al 12),
+// o un rango de fechas cualquiera elegido a mano.
 export function MonthlyReportPage() {
   const navigate = useNavigate();
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState('');
   const [periods, setPeriods] = useState<ReportPeriod[]>([]);
   const [from, setFrom] = useState('');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [report, setReport] = useState<MonthlyReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<'pdf' | 'zip' | 'generate' | null>(null);
@@ -52,28 +63,57 @@ export function MonthlyReportPage() {
   }, []);
 
   // Al cambiar de institución: sus períodos, seleccionando el más reciente
+  // (si se estaban usando fechas elegidas a mano, se mantienen)
   useEffect(() => {
     if (!companyId) return;
     setReport(null);
     getReportPeriods(companyId)
       .then(({ periods: list }) => {
         setPeriods(list);
-        setFrom(list[0]?.from ?? '');
+        setFrom((prev) => (prev === CUSTOM ? CUSTOM : list[0]?.from ?? ''));
       })
       .catch(() => toast.error('No se pudieron calcular los períodos'));
   }, [companyId]);
 
+  const isCustom = from === CUSTOM;
+  const customError = !isCustom || !customFrom || !customTo
+    ? null
+    : customFrom > customTo
+      ? 'La fecha "desde" debe ser anterior o igual a "hasta".'
+      : daysBetween(customFrom, customTo) > MAX_CUSTOM_DAYS
+        ? 'El rango puede abarcar como máximo un año.'
+        : null;
+
+  // Rango efectivo del informe; null mientras las fechas elegidas estén incompletas o sean inválidas
+  const range = useMemo<ReportRange | null>(() => {
+    if (!isCustom) return from ? { from } : null;
+    if (!customFrom || !customTo || customError) return null;
+    return { from: customFrom, to: customTo };
+  }, [isCustom, from, customFrom, customTo, customError]);
+
+  const handlePeriodChange = (value: string) => {
+    // Al pasar a fechas a mano, partir del período que estaba seleccionado
+    if (value === CUSTOM && !customFrom && !customTo) {
+      const current = periods.find((p) => p.from === from) ?? periods[0];
+      if (current) {
+        setCustomFrom(current.from);
+        setCustomTo(current.to);
+      }
+    }
+    setFrom(value);
+  };
+
   const loadReport = useCallback(async () => {
-    if (!companyId || !from) return;
+    if (!companyId || !range) return;
     setLoading(true);
     try {
-      setReport(await getMonthlyReport(companyId, from));
+      setReport(await getMonthlyReport(companyId, range));
     } catch {
       toast.error('No se pudo cargar el informe');
     } finally {
       setLoading(false);
     }
-  }, [companyId, from]);
+  }, [companyId, range]);
 
   useEffect(() => {
     loadReport();
@@ -82,20 +122,21 @@ export function MonthlyReportPage() {
   // Mientras haya PDFs generándose, refrescar el estado cada 5 s
   const inProgress = report?.services.some((s) => s.pdf === 'IN_PROGRESS') ?? false;
   useEffect(() => {
-    if (!inProgress) return;
+    if (!inProgress || !companyId || !range) return;
     const t = setInterval(() => {
-      if (companyId && from) getMonthlyReport(companyId, from).then(setReport).catch(() => undefined);
+      getMonthlyReport(companyId, range).then(setReport).catch(() => undefined);
     }, 5000);
     return () => clearInterval(t);
-  }, [inProgress, companyId, from]);
+  }, [inProgress, companyId, range]);
 
   const pendingCount = report?.services.filter((s) => s.pdf === 'MISSING' || s.pdf === 'STALE').length ?? 0;
   const readyCount = report?.services.filter((s) => s.pdf === 'READY' || s.pdf === 'STALE').length ?? 0;
 
   const handleGenerate = async () => {
+    if (!range) return;
     setBusy('generate');
     try {
-      const { queued } = await generateMissingPdfs(companyId, from);
+      const { queued } = await generateMissingPdfs(companyId, range);
       toast.success(`${queued} PDF${queued !== 1 ? 's' : ''} en generación`);
       await loadReport();
     } catch {
@@ -106,9 +147,10 @@ export function MonthlyReportPage() {
   };
 
   const handleDownload = async (kind: 'pdf' | 'zip') => {
+    if (!range) return;
     setBusy(kind);
     try {
-      await downloadMonthlyFile(kind, companyId, from);
+      await downloadMonthlyFile(kind, companyId, range);
     } catch {
       toast.error('No se pudo descargar el informe');
     } finally {
@@ -124,12 +166,13 @@ export function MonthlyReportPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Informe mensual</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Servicios de cada institución según su período de facturación.
+            Servicios de cada institución según su período de facturación o las fechas que elijas.
           </p>
         </div>
 
         {/* Selección */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 grid grid-cols-1 md:grid-cols-[2fr_1.5fr_auto] gap-4 items-end">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-[2fr_1.5fr_auto] gap-4 items-end">
           <div className="space-y-1">
             <Label htmlFor="company">Institución</Label>
             <select
@@ -148,7 +191,7 @@ export function MonthlyReportPage() {
             <select
               id="period"
               value={from}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={(e) => handlePeriodChange(e.target.value)}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             >
               {periods.map((p, i) => (
@@ -156,6 +199,7 @@ export function MonthlyReportPage() {
                   {formatPeriod(p)}{i === 0 ? ' (actual)' : ''}
                 </option>
               ))}
+              <option value={CUSTOM}>Elegir fechas…</option>
             </select>
           </div>
           <Button variant="ghost" size="sm" onClick={() => navigate('/companies')} title="Cambiar el día de inicio del período">
@@ -166,11 +210,40 @@ export function MonthlyReportPage() {
           </Button>
         </div>
 
+        {isCustom && (
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:max-w-md gap-4">
+              <div className="space-y-1">
+                <Label htmlFor="custom-from">Desde</Label>
+                <Input
+                  id="custom-from"
+                  type="date"
+                  value={customFrom}
+                  max={customTo || undefined}
+                  onChange={(e) => setCustomFrom(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="custom-to">Hasta</Label>
+                <Input
+                  id="custom-to"
+                  type="date"
+                  value={customTo}
+                  min={customFrom || undefined}
+                  onChange={(e) => setCustomTo(e.target.value)}
+                />
+              </div>
+            </div>
+            {customError && <p className="text-sm text-red-600">{customError}</p>}
+          </div>
+        )}
+        </div>
+
         {loading && !report ? (
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
           </div>
-        ) : report && (
+        ) : report && range && (
           <>
             {/* Totales y acciones */}
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">

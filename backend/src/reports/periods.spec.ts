@@ -1,4 +1,4 @@
-import { parseYmd, periodContaining, periodFrom, recentPeriods } from './periods';
+import { customPeriod, parseYmd, periodContaining, periodFrom, recentPeriods } from './periods';
 
 describe('períodos del informe mensual', () => {
   it('día 13: del 13 de un mes al 12 del siguiente', () => {
@@ -30,5 +30,18 @@ describe('períodos del informe mensual', () => {
     expect(periodFrom('2026-09-13', 13)).toEqual({ from: '2026-09-13', to: '2026-10-12' });
     expect(periodFrom('2026-09-01', 13)).toBeNull();
     expect(periodFrom('no-es-fecha', 13)).toBeNull();
+  });
+
+  it('acepta rangos elegidos a mano', () => {
+    expect(customPeriod('2026-09-20', '2026-10-19')).toEqual({ from: '2026-09-20', to: '2026-10-19' });
+    expect(customPeriod('2026-10-05', '2026-10-05')).toEqual({ from: '2026-10-05', to: '2026-10-05' });
+    expect(customPeriod('2026-01-01', '2026-12-31')).not.toBeNull();
+  });
+
+  it('rechaza rangos invertidos, de más de un año o con fechas inexistentes', () => {
+    expect(customPeriod('2026-10-19', '2026-09-20')).toBeNull();
+    expect(customPeriod('2025-01-01', '2026-06-01')).toBeNull();
+    expect(customPeriod('2026-02-01', '2026-02-31')).toBeNull();
+    expect(customPeriod('no-es-fecha', '2026-02-10')).toBeNull();
   });
 });

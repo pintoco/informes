@@ -2,12 +2,13 @@
 
 Aplicación para registrar servicios técnicos de CCTV con carga de fotos y generación de PDFs.
 
-> **Rama `aws-lightsail`**: versión endurecida para migrar a AWS Lightsail + S3 (ver `deploy/lightsail/README.md`).
-> Producción sigue en Railway desde `main` hasta el corte. No hacer merge a `main` sin coordinar la migración.
+> **Rama `aws-lightsail`**: versión endurecida que corre en AWS Lightsail + S3 (ver `deploy/lightsail/README.md`).
+> **Producción está en AWS desde 2026-11-02**: el DNS de `informes.elementalpro.cl` (Cloudflare, registro A "DNS only")
+> apunta a Lightsail. Railway (`main`) quedó como respaldo sin uso hasta que se dé de baja; no recibe datos nuevos.
 >
-> **Desplegado en AWS (cuenta 839911707830, `sa-east-1`)**, en paralelo a Railway:
+> **AWS (cuenta 839911707830, `sa-east-1`)**:
 > - Lightsail `elemental-pro` (2 GB, Ubuntu 24.04), IP estática `54.232.144.217`, snapshots diarios 07:00 UTC
-> - URL de prueba: `https://54-232-144-217.sslip.io` (hasta cambiar el DNS de `informes.elementalpro.cl`)
+> - URL: `https://informes.elementalpro.cl` (`DOMAIN` en `.env`; Caddy obtiene el certificado)
 > - S3: `elementalpro-informes-photos` / `elementalpro-informes-pdfs` (privados, versionados, CORS para ambos dominios)
 > - IAM `elemental-pro-app`: solo lectura/escritura en esos buckets
 > - Código en el servidor: `~/elemental` (rama `aws-lightsail`), config en `~/elemental/deploy/lightsail/.env`
@@ -178,5 +179,5 @@ docker compose exec -e ADMIN_EMAIL=admin@empresa.com -e ADMIN_NAME="Admin" \
 - **Campos opcionales en actualización**: al borrar un comentario (NVR, Cámaras, Observaciones) y guardar, el frontend envía `""` en edición. El backend lo convierte a `null` con `dto.campo || null` para limpiar el valor en BD. No omitir el campo (undefined) porque el servicio usa `!== undefined` para decidir qué actualizar.
 - **Responsable desde el perfil**: al crear un servicio (o "Nueva visita a este punto"), `responsable`, `fono` y `email` los pone el backend desde el perfil del usuario conectado (`ServicesService.responsableFromProfile`; email = `contactEmail` o el de acceso) e ignora lo que mande el formulario. `nombreTecnico` es nullable: solo lo tienen servicios anteriores a 2026-10.
 - **Textos predefinidos**: tabla `TextTemplate` (módulo `text-templates`). Las 6 iniciales se insertan en la migración `20261008000000_formulario_y_textos`, así que una BD restaurada desde Railway las recibe al aplicar migraciones.
-- **Informe mensual**: `Company.periodStartDay` (1–28) define el período (13 → del 13 al 12). Los servicios se asocian por `razonSocial = Company.name`. El consolidado renderiza solo portada+resumen y une los PDFs ya generados con `pdf-lib` (`ReportsService.buildConsolidated`). Todo Chromium pasa por `pdfs/pdf-renderer.ts` (uno a la vez por proceso).
+- **Informe mensual**: `Company.periodStartDay` (1–28) define el período (13 → del 13 al 12). Con `to` en la query se usa un rango elegido a mano (`customPeriod`, máx. 366 días) en vez del período. Los servicios se asocian por `razonSocial = Company.name`. El consolidado renderiza solo portada+resumen y une los PDFs ya generados con `pdf-lib` (`ReportsService.buildConsolidated`). Todo Chromium pasa por `pdfs/pdf-renderer.ts` (uno a la vez por proceso).
 - **PDF desactualizado**: se detecta comparando `Service.updatedAt` con el `createdAt` del último PDF. Subir/borrar fotos actualiza `updatedAt` (`touchService`).

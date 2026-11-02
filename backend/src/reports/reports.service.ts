@@ -5,7 +5,7 @@ import { StorageService } from '../storage/storage.service';
 import { ServicesService } from '../services/services.service';
 import { renderHtmlToPdf } from '../pdfs/pdf-renderer';
 import { generateMonthlyReportHtml } from './monthly-report.html';
-import { Period, parseYmd, periodFrom, recentPeriods } from './periods';
+import { MAX_CUSTOM_RANGE_DAYS, Period, customPeriod, parseYmd, periodFrom, recentPeriods } from './periods';
 
 const APP_TIME_ZONE = 'America/Santiago';
 const WORK_EXCERPT_LENGTH = 220;
@@ -35,7 +35,16 @@ export class ReportsService {
     return company;
   }
 
-  private resolvePeriod(from: string, startDay: number): Period {
+  private resolvePeriod(from: string, to: string | undefined, startDay: number): Period {
+    if (to) {
+      const custom = customPeriod(from, to);
+      if (!custom) {
+        throw new BadRequestException(
+          `Rango de fechas inválido: "desde" debe ser anterior a "hasta" y abarcar como máximo ${MAX_CUSTOM_RANGE_DAYS} días`,
+        );
+      }
+      return custom;
+    }
     const period = periodFrom(from, startDay);
     if (!period) {
       throw new BadRequestException(`El período debe empezar el día ${startDay} de un mes`);
@@ -52,10 +61,10 @@ export class ReportsService {
     };
   }
 
-  /** Servicios de la institución en el período, con el estado de su PDF. */
-  private async loadPeriod(companyId: string, from: string) {
+  /** Servicios de la institución en el período (o rango elegido), con el estado de su PDF. */
+  private async loadPeriod(companyId: string, from: string, to?: string) {
     const company = await this.findCompany(companyId);
-    const period = this.resolvePeriod(from, company.periodStartDay);
+    const period = this.resolvePeriod(from, to, company.periodStartDay);
 
     const services = await this.prisma.service.findMany({
       where: {
@@ -99,8 +108,8 @@ export class ReportsService {
     return { company, period, rows };
   }
 
-  async getMonthly(companyId: string, from: string) {
-    const { company, period, rows } = await this.loadPeriod(companyId, from);
+  async getMonthly(companyId: string, from: string, to?: string) {
+    const { company, period, rows } = await this.loadPeriod(companyId, from, to);
     const byType: Record<string, number> = {};
     for (const r of rows) byType[r.tipoMantenimiento] = (byType[r.tipoMantenimiento] ?? 0) + 1;
 
@@ -113,8 +122,8 @@ export class ReportsService {
   }
 
   /** Encola los PDFs que faltan o quedaron desactualizados. */
-  async generateMissing(companyId: string, from: string, userId: string) {
-    const { rows } = await this.loadPeriod(companyId, from);
+  async generateMissing(companyId: string, from: string, to: string | undefined, userId: string) {
+    const { rows } = await this.loadPeriod(companyId, from, to);
     const pending = rows.filter((r) => r.pdf === 'MISSING' || r.pdf === 'STALE');
     for (const r of pending) {
       await this.servicesService.requestPdf(r.id, userId);
@@ -123,8 +132,8 @@ export class ReportsService {
     return { queued: pending.length };
   }
 
-  async buildZip(companyId: string, from: string) {
-    const { company, period, rows } = await this.loadPeriod(companyId, from);
+  async buildZip(companyId: string, from: string, to?: string) {
+    const { company, period, rows } = await this.loadPeriod(companyId, from, to);
     const ids = rows.filter((r) => r.pdfKey).map((r) => r.id);
     if (ids.length === 0) throw new BadRequestException('No hay PDFs generados en este período');
     const buffer = await this.servicesService.buildBulkPdfZip(ids);
@@ -132,8 +141,8 @@ export class ReportsService {
   }
 
   /** Portada + resumen, seguidos de los PDFs individuales del período en orden de fecha. */
-  async buildConsolidated(companyId: string, from: string, emitidoPor: string) {
-    const { company, period, rows } = await this.loadPeriod(companyId, from);
+  async buildConsolidated(companyId: string, from: string, to: string | undefined, emitidoPor: string) {
+    const { company, period, rows } = await this.loadPeriod(companyId, from, to);
     if (rows.length === 0) throw new BadRequestException('No hay servicios en este período');
 
     const summary = await renderHtmlToPdf(

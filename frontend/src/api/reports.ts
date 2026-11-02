@@ -1,6 +1,12 @@
 import apiClient from './client';
 import { MonthlyReport, ReportPeriod, Company } from '@/types';
 
+// Rango del informe: `from` solo = período de la institución; con `to` = fechas elegidas a mano
+export interface ReportRange {
+  from: string;
+  to?: string;
+}
+
 export const getReportPeriods = async (
   companyId: string,
 ): Promise<{ company: Pick<Company, 'id' | 'name' | 'periodStartDay'>; periods: ReportPeriod[] }> => {
@@ -8,13 +14,13 @@ export const getReportPeriods = async (
   return data;
 };
 
-export const getMonthlyReport = async (companyId: string, from: string): Promise<MonthlyReport> => {
-  const { data } = await apiClient.get<MonthlyReport>('/reports/monthly', { params: { companyId, from } });
+export const getMonthlyReport = async (companyId: string, range: ReportRange): Promise<MonthlyReport> => {
+  const { data } = await apiClient.get<MonthlyReport>('/reports/monthly', { params: { companyId, ...range } });
   return data;
 };
 
-export const generateMissingPdfs = async (companyId: string, from: string): Promise<{ queued: number }> => {
-  const { data } = await apiClient.post('/reports/monthly/generate-missing', { companyId, from });
+export const generateMissingPdfs = async (companyId: string, range: ReportRange): Promise<{ queued: number }> => {
+  const { data } = await apiClient.post('/reports/monthly/generate-missing', { companyId, ...range });
   return data;
 };
 
@@ -23,10 +29,10 @@ export const generateMissingPdfs = async (companyId: string, from: string): Prom
 export const downloadMonthlyFile = async (
   kind: 'pdf' | 'zip',
   companyId: string,
-  from: string,
+  range: ReportRange,
 ): Promise<void> => {
   const response = await apiClient.get(`/reports/monthly/${kind}`, {
-    params: { companyId, from },
+    params: { companyId, ...range },
     responseType: 'blob',
     timeout: 180_000,
   });

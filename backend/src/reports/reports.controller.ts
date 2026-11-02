@@ -19,18 +19,18 @@ export class ReportsController {
 
   @Get()
   monthly(@Query() q: MonthlyReportQueryDto) {
-    return this.reports.getMonthly(q.companyId, q.from);
+    return this.reports.getMonthly(q.companyId, q.from, q.to);
   }
 
   @Post('generate-missing')
   @HttpCode(HttpStatus.OK)
   generateMissing(@Body() body: MonthlyReportQueryDto, @Request() req: any) {
-    return this.reports.generateMissing(body.companyId, body.from, req.user.sub);
+    return this.reports.generateMissing(body.companyId, body.from, body.to, req.user.sub);
   }
 
   @Get('zip')
   async zip(@Query() q: MonthlyReportQueryDto, @Res() res: Response) {
-    const { buffer, filename } = await this.reports.buildZip(q.companyId, q.from);
+    const { buffer, filename } = await this.reports.buildZip(q.companyId, q.from, q.to);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
@@ -38,7 +38,7 @@ export class ReportsController {
 
   @Get('pdf')
   async pdf(@Query() q: MonthlyReportQueryDto, @Request() req: any, @Res() res: Response) {
-    const { buffer, filename } = await this.reports.buildConsolidated(q.companyId, q.from, req.user.name);
+    const { buffer, filename } = await this.reports.buildConsolidated(q.companyId, q.from, q.to, req.user.name);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(buffer);
